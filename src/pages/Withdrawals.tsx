@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { RefreshCw, Check, X } from 'lucide-react'
+import { RefreshCw, Check, X, Download } from 'lucide-react'
+import { exportCsv } from '../lib/exportCsv'
 
 interface Withdrawal {
   id: string
@@ -136,7 +137,18 @@ export function Withdrawals() {
           <div className="page-title">Withdrawals</div>
           <div className="page-subtitle">Manage user withdrawal requests</div>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={13} /> Refresh</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={13} /> Refresh</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => exportCsv(
+            rows.map(r => ({
+              id: r.id, user_name: r.user_name, phone: r.phone,
+              amount: r.amount, upi_id: r.upi_id, status: r.status,
+              requested_at: r.requested_at, processed_at: r.processed_at,
+              failure_reason: r.failure_reason,
+            })),
+            'zelth_withdrawals'
+          )}><Download size={13} /> Export CSV</button>
+        </div>
       </div>
 
       <div className="filters">

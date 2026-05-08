@@ -1,12 +1,14 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, CheckSquare, Wallet, Users, Trophy, Upload, LogOut, Bell } from 'lucide-react'
+import { LayoutDashboard, CheckSquare, Wallet, Users, Trophy, Upload, LogOut, Bell, FileCheck, Tag } from 'lucide-react'
 
 const links = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/submissions', icon: CheckSquare, label: 'Submissions' },
+  { to: '/bulk-verify', icon: FileCheck, label: 'Bulk Verify' },
   { to: '/withdrawals', icon: Wallet, label: 'Withdrawals' },
   { to: '/users', icon: Users, label: 'Users' },
   { to: '/challenges', icon: Trophy, label: 'Challenges' },
+  { to: '/challenge-types', icon: Tag, label: 'Challenge Types' },
   { to: '/bulk-credit', icon: Upload, label: 'Bulk Credit' },
   { to: '/notify', icon: Bell, label: 'Notify' },
 ]

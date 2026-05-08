@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { RefreshCw, Search } from 'lucide-react'
+import { RefreshCw, Search, Download } from 'lucide-react'
+import { exportCsv } from '../lib/exportCsv'
 
 interface User {
   id: string
@@ -88,7 +89,19 @@ export function Users() {
           <div className="page-title">Users</div>
           <div className="page-subtitle">All registered users and wallet info</div>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={13} /> Refresh</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={13} /> Refresh</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => exportCsv(
+            filtered.map(u => ({
+              id: u.id, name: u.name, phone: u.phone, age: u.age,
+              city: u.city, gender: u.gender, language: u.language,
+              upi_id: u.upi_id, wallet_balance: u.wallet_balance,
+              total_earned: u.total_earned, total_withdrawn: u.total_withdrawn,
+              challenge_count: u.join_count, created_at: u.created_at,
+            })),
+            'zelth_users'
+          )}><Download size={13} /> Export CSV</button>
+        </div>
       </div>
 
       <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 20 }}>

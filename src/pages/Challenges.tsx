@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { RefreshCw, Plus, Edit2, ToggleLeft, ToggleRight } from 'lucide-react'
+import { RefreshCw, Plus, Edit2, ToggleLeft, ToggleRight, Download } from 'lucide-react'
+import { exportCsv } from '../lib/exportCsv'
 
 interface Challenge {
   id: string
@@ -158,6 +159,18 @@ export function Challenges() {
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={13} /></button>
+          <button className="btn btn-ghost btn-sm" onClick={() => exportCsv(
+            challenges.map(c => ({
+              id: c.id, title: c.title, challenge_type: c.challenge_type,
+              entry_fee: c.entry_fee, prize_pool: c.prize_pool,
+              is_active: c.is_active, total_slots: c.total_slots,
+              participant_count: c.participant_count,
+              personal_window_days: c.personal_window_days,
+              min_target: c.min_target, target_unit: c.target_unit,
+              start_date: c.start_date, end_date: c.end_date,
+            })),
+            'zelth_challenges'
+          )}><Download size={13} /> Export CSV</button>
           <button className="btn btn-primary" onClick={openCreate}><Plus size={14} /> New Challenge</button>
         </div>
       </div>

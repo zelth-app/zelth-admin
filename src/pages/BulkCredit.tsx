@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import Papa from 'papaparse'
 import { callEdge, SERVICE_SECRET } from '../lib/supabase'
 import { toast } from '../components/Toast'
+import { exportCsv } from '../lib/exportCsv'
 import { Upload, Download, CheckCircle, XCircle, Clock } from 'lucide-react'
 
 interface CsvRow {
@@ -85,6 +86,14 @@ export function BulkCredit() {
     const successCount = res.filter(r => r.status === 'success').length
     const errorCount = res.filter(r => r.status === 'error').length
     toast(`Done! ${successCount} credited, ${errorCount} failed`, successCount > 0 ? 'success' : 'error')
+    const resultRows = res.map((r, i) => ({
+      row_number: i + 1,
+      status: r.status,
+      message: r.message || '',
+      processed_at: new Date().toISOString(),
+      ...r.row,
+    }))
+    exportCsv(resultRows as Record<string, unknown>[], 'zelth_bulk_credit_results')
   }
 
   function downloadTemplate() {
@@ -185,6 +194,20 @@ export function BulkCredit() {
             {successCount > 0 && <span style={{ color: 'var(--green)', fontSize: 12 }}>✓ {successCount} success</span>}
             {errorCount > 0 && <span style={{ color: 'var(--red)', fontSize: 12 }}>✗ {errorCount} failed</span>}
             {pendingCount > 0 && <span style={{ color: 'var(--text3)', fontSize: 12 }}>⏳ {pendingCount} pending</span>}
+            {results.length > 0 && !processing && (
+              <button className="btn btn-ghost btn-sm" onClick={() => exportCsv(
+                results.map((r, i) => ({
+                  row_number: i + 1,
+                  status: r.status,
+                  message: r.message || '',
+                  processed_at: new Date().toISOString(),
+                  ...r.row,
+                })) as Record<string, unknown>[],
+                'zelth_results'
+              )}>
+                <Download size={13} /> Download Results CSV
+              </button>
+            )}
           </div>
           <div className="table-wrap">
             <table>

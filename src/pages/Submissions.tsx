@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase, callEdge, SERVICE_SECRET } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { ExternalLink, Check, X, RefreshCw } from 'lucide-react'
+import { ExternalLink, Check, X, RefreshCw, Download } from 'lucide-react'
+import { exportCsv } from '../lib/exportCsv'
 
 interface Submission {
   submission_id: string
@@ -161,7 +162,21 @@ export function Submissions() {
           <div className="page-title">Submissions</div>
           <div className="page-subtitle">Review and verify activity submissions</div>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={13} /> Refresh</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={13} /> Refresh</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => exportCsv(
+            filtered.map(r => ({
+              submission_id: r.submission_id, user_name: r.user_name,
+              phone: r.phone, challenge_title: r.challenge_title,
+              strava_url: r.strava_url, status: r.status,
+              rejection_reason: r.rejection_reason, submitted_at: r.submitted_at,
+              verified_at: r.verified_at, entry_fee: r.entry_fee,
+              wallet_balance: r.wallet_balance, participant_id: r.participant_id,
+              user_id: r.user_id, challenge_id: r.challenge_id,
+            })),
+            'zelth_submissions'
+          )}><Download size={13} /> Export CSV</button>
+        </div>
       </div>
 
       <div className="filters">
