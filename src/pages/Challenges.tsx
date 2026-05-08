@@ -49,13 +49,13 @@ export function Challenges() {
   async function load() {
     setLoading(true)
     try {
-      const [{ data: ch, error }, { data: ty }, { data: counts }] = await Promise.all([
-        supabase.from('challenges').select('*, challenge_types(name, display_name)').order('sort_order'),
+      const [chRes, { data: ty }, { data: counts }] = await Promise.all([
+        adminDb('select', { table: 'challenges', columns: '*, challenge_types(name, display_name)', order: { column: 'sort_order', ascending: true } }),
         supabase.from('challenge_types').select('id, name, display_name'),
         supabase.from('challenge_participants').select('challenge_id'),
       ])
 
-      if (error) throw error
+      const ch = chRes.data
 
       const countMap: Record<string, number> = {}
       for (const c of counts || []) countMap[c.challenge_id] = (countMap[c.challenge_id] || 0) + 1
