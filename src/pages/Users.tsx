@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabaseAdmin } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { RefreshCw, Search, Download } from 'lucide-react'
 import { exportCsv } from '../lib/exportCsv'
@@ -30,16 +30,15 @@ export function Users() {
   async function load() {
     setLoading(true)
     try {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await supabase
         .from('users')
         .select(`id, phone, name, age, city, gender, language, upi_id, created_at, wallet(balance, total_earned, total_withdrawn)`)
         .order('created_at', { ascending: false })
 
       if (error) throw error
 
-      // Get join counts
       const userIds = (data || []).map((u: any) => u.id)
-      const { data: joinData } = await supabaseAdmin
+      const { data: joinData } = await supabase
         .from('challenge_participants')
         .select('user_id')
         .in('user_id', userIds)

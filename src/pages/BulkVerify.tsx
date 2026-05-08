@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import Papa from 'papaparse'
-import { supabaseAdmin, callEdge, SERVICE_SECRET } from '../lib/supabase'
+import { supabase, adminDb, callEdge, SERVICE_SECRET } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { exportCsv } from '../lib/exportCsv'
 import { Upload, Download, CheckCircle, XCircle, Clock, ExternalLink } from 'lucide-react'
@@ -40,7 +40,7 @@ export function BulkVerify() {
   async function loadPendingSubmissions() {
     setLoadingPending(true)
     try {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await supabase
         .from('activity_submissions')
         .select(`
           id, strava_url, submitted_at,
@@ -124,11 +124,12 @@ export function BulkVerify() {
     }
 
     const submissionIds = rows.map(r => r.submission_id).filter(Boolean)
-    const { data: existingVerified } = await supabaseAdmin
+    const { data: existingVerified } = await supabase
       .from('activity_submissions')
       .select('id, status')
       .in('id', submissionIds)
       .eq('status', 'verified')
+
     if (existingVerified && existingVerified.length > 0) {
       const confirm = window.confirm(`⚠️ ${existingVerified.length} submissions are already verified — crediting again may cause duplicates. Continue?`)
       if (!confirm) { setProcessing(false); return }
@@ -143,11 +144,11 @@ export function BulkVerify() {
         if (!row.submission_id || !row.action) throw new Error('Missing submission_id or action')
 
         if (row.action === 'verify') {
-          const { error: e1 } = await supabaseAdmin
-            .from('activity_submissions')
-            .update({ status: 'verified', verified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-            .eq('id', row.submission_id)
-          if (e1) throw e1
+          await adminDb('update', {
+            table: 'activity_submissions',
+            data: { status: 'verified', verified_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+            filters: { id: row.submission_id },
+          })
 
           if (row.amount && Number(row.amount) > 0) {
             if (!row.participant_id || !row.user_id || !row.challenge_id) throw new Error('Missing participant_id, user_id or challenge_id for credit')
@@ -166,15 +167,15 @@ export function BulkVerify() {
 
         } else if (row.action === 'reject') {
           if (!row.rejection_reason) throw new Error('rejection_reason required for reject action')
-          const { error } = await supabaseAdmin
-            .from('activity_submissions')
-            .update({
+          await adminDb('update', {
+            table: 'activity_submissions',
+            data: {
               status: 'rejected',
               rejection_reason: row.rejection_reason,
               updated_at: new Date().toISOString(),
-            })
-            .eq('id', row.submission_id)
-          if (error) throw error
+            },
+            filters: { id: row.submission_id },
+          })
           res[i] = { row, status: 'success', message: `✓ Rejected` }
         } else {
           throw new Error(`Invalid action: ${row.action}. Use 'verify' or 'reject'`)

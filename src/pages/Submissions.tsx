@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabaseAdmin, callEdge, SERVICE_SECRET } from '../lib/supabase'
+import { supabase, adminDb, callEdge, SERVICE_SECRET } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { ExternalLink, Check, X, RefreshCw, Download } from 'lucide-react'
 import { exportCsv } from '../lib/exportCsv'
@@ -48,7 +48,7 @@ export function Submissions() {
   async function load() {
     setLoading(true)
     try {
-      let q = supabaseAdmin
+      let q = supabase
         .from('activity_submissions')
         .select(`
           id, status, strava_url, rejection_reason, submitted_at, verified_at,
@@ -98,14 +98,12 @@ export function Submissions() {
     if (!amount || amount <= 0) { toast('Enter a valid prize amount', 'error'); return }
     setSaving(true)
     try {
-      // Update submission
-      const { error: e1 } = await supabaseAdmin
-        .from('activity_submissions')
-        .update({ status: 'verified', verified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq('id', verifyModal.submission.submission_id)
-      if (e1) throw e1
+      await adminDb('update', {
+        table: 'activity_submissions',
+        data: { status: 'verified', verified_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+        filters: { id: verifyModal.submission.submission_id },
+      })
 
-      // Credit wallet
       await callEdge('credit-wallet', {
         service_secret: SERVICE_SECRET,
         user_id: verifyModal.submission.user_id,
@@ -132,15 +130,15 @@ export function Submissions() {
     if (!rejectModal.reason.trim()) { toast('Enter a rejection reason', 'error'); return }
     setSaving(true)
     try {
-      const { error } = await supabaseAdmin
-        .from('activity_submissions')
-        .update({
+      await adminDb('update', {
+        table: 'activity_submissions',
+        data: {
           status: 'rejected',
           rejection_reason: rejectModal.reason,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', rejectModal.submission.submission_id)
-      if (error) throw error
+        },
+        filters: { id: rejectModal.submission.submission_id },
+      })
       toast('Run rejected')
       setRejectModal(null)
       load()

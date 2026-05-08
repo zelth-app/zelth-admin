@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabaseAdmin } from '../lib/supabase'
+import { supabase, adminDb } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { RefreshCw, Plus, Edit2, ToggleLeft, ToggleRight, Download } from 'lucide-react'
 import { exportCsv } from '../lib/exportCsv'
@@ -49,11 +49,13 @@ export function Challenges() {
   async function load() {
     setLoading(true)
     try {
-      const [{ data: ch }, { data: ty }, { data: counts }] = await Promise.all([
-        supabaseAdmin.from('challenges').select('*, challenge_types(name, display_name)').order('sort_order'),
-        supabaseAdmin.from('challenge_types').select('id, name, display_name'),
-        supabaseAdmin.from('challenge_participants').select('challenge_id'),
+      const [{ data: ch, error }, { data: ty }, { data: counts }] = await Promise.all([
+        supabase.from('challenges').select('*, challenge_types(name, display_name)').order('sort_order'),
+        supabase.from('challenge_types').select('id, name, display_name'),
+        supabase.from('challenge_participants').select('challenge_id'),
       ])
+
+      if (error) throw error
 
       const countMap: Record<string, number> = {}
       for (const c of counts || []) countMap[c.challenge_id] = (countMap[c.challenge_id] || 0) + 1
@@ -104,7 +106,7 @@ export function Challenges() {
       try { cashback = JSON.parse(form.cashback_tiers) } catch { }
       try { rules = form.rules.split('\n').filter(Boolean) } catch { }
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         title: form.title,
         entry_fee: Number(form.entry_fee),
         prize_pool: Number(form.prize_pool),
@@ -121,12 +123,10 @@ export function Challenges() {
       }
 
       if (editId) {
-        const { error } = await supabaseAdmin.from('challenges').update(payload).eq('id', editId)
-        if (error) throw error
+        await adminDb('update', { table: 'challenges', data: payload, filters: { id: editId } })
         toast('Challenge updated')
       } else {
-        const { error } = await supabaseAdmin.from('challenges').insert(payload)
-        if (error) throw error
+        await adminDb('insert', { table: 'challenges', data: payload })
         toast('Challenge created')
       }
       setModal(null)
@@ -140,7 +140,7 @@ export function Challenges() {
 
   async function toggleActive(c: Challenge) {
     try {
-      await supabaseAdmin.from('challenges').update({ is_active: !c.is_active }).eq('id', c.id)
+      await adminDb('update', { table: 'challenges', data: { is_active: !c.is_active }, filters: { id: c.id } })
       toast(`Challenge ${c.is_active ? 'deactivated' : 'activated'}`)
       load()
     } catch (e: any) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabaseAdmin } from '../lib/supabase'
+import { supabase, adminDb } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { RefreshCw, Check, X, Download } from 'lucide-react'
 import { exportCsv } from '../lib/exportCsv'
@@ -32,7 +32,7 @@ export function Withdrawals() {
   async function load() {
     setLoading(true)
     try {
-      let q = supabaseAdmin
+      let q = supabase
         .from('withdrawal_requests')
         .select(`id, amount, upi_id, status, requested_at, processed_at, failure_reason, wallet_transaction_id, users!inner(id, name, phone, wallet(id, balance))`)
         .order('requested_at', { ascending: false })
@@ -67,26 +67,27 @@ export function Withdrawals() {
   async function handleApprove(row: Withdrawal) {
     setSaving(row.id)
     try {
-      await supabaseAdmin.from('withdrawal_requests').update({
-        status: 'completed', processed_at: new Date().toISOString(), processed_by: 'admin',
-      }).eq('id', row.id)
+      await adminDb('update', {
+        table: 'withdrawal_requests',
+        data: { status: 'completed', processed_at: new Date().toISOString(), processed_by: 'admin' },
+        filters: { id: row.id },
+      })
 
       if (row.wallet_transaction_id) {
-        await supabaseAdmin.from('wallet_transactions').update({ status: 'completed' }).eq('id', row.wallet_transaction_id)
+        await adminDb('update', {
+          table: 'wallet_transactions',
+          data: { status: 'completed' },
+          filters: { id: row.wallet_transaction_id },
+        })
       }
 
-      await supabaseAdmin.from('wallet').update({
-        total_withdrawn: supabaseAdmin.rpc('total_withdrawn'),
-        updated_at: new Date().toISOString(),
-      }).eq('id', row.wallet_id)
-
-      // Update total_withdrawn manually
-      const { data: wData } = await supabaseAdmin.from('wallet').select('total_withdrawn').eq('id', row.wallet_id).single()
+      const { data: wData } = await supabase.from('wallet').select('total_withdrawn').eq('id', row.wallet_id).single()
       if (wData) {
-        await supabaseAdmin.from('wallet').update({
-          total_withdrawn: Number(wData.total_withdrawn) + row.amount,
-          updated_at: new Date().toISOString(),
-        }).eq('id', row.wallet_id)
+        await adminDb('update', {
+          table: 'wallet',
+          data: { total_withdrawn: Number(wData.total_withdrawn) + row.amount, updated_at: new Date().toISOString() },
+          filters: { id: row.wallet_id },
+        })
       }
 
       toast(`✅ Withdrawal approved — ₹${row.amount} to ${row.upi_id}`)
@@ -102,22 +103,32 @@ export function Withdrawals() {
     if (!rejectModal) return
     setSaving(rejectModal.id)
     try {
-      await supabaseAdmin.from('withdrawal_requests').update({
-        status: 'failed', processed_at: new Date().toISOString(),
-        processed_by: 'admin', failure_reason: rejectModal.reason,
-      }).eq('id', rejectModal.id)
+      await adminDb('update', {
+        table: 'withdrawal_requests',
+        data: {
+          status: 'failed',
+          processed_at: new Date().toISOString(),
+          processed_by: 'admin',
+          failure_reason: rejectModal.reason,
+        },
+        filters: { id: rejectModal.id },
+      })
 
       if (rejectModal.txn_id) {
-        await supabaseAdmin.from('wallet_transactions').update({ status: 'reversed' }).eq('id', rejectModal.txn_id)
+        await adminDb('update', {
+          table: 'wallet_transactions',
+          data: { status: 'reversed' },
+          filters: { id: rejectModal.txn_id },
+        })
       }
 
-      // Refund balance
-      const { data: wData } = await supabaseAdmin.from('wallet').select('balance').eq('id', rejectModal.wallet_id).single()
+      const { data: wData } = await supabase.from('wallet').select('balance').eq('id', rejectModal.wallet_id).single()
       if (wData) {
-        await supabaseAdmin.from('wallet').update({
-          balance: Number(wData.balance) + rejectModal.amount,
-          updated_at: new Date().toISOString(),
-        }).eq('id', rejectModal.wallet_id)
+        await adminDb('update', {
+          table: 'wallet',
+          data: { balance: Number(wData.balance) + rejectModal.amount, updated_at: new Date().toISOString() },
+          filters: { id: rejectModal.wallet_id },
+        })
       }
 
       toast('Withdrawal rejected — amount refunded to wallet')
