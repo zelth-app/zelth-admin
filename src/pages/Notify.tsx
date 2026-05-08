@@ -1,10 +1,19 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import Papa from 'papaparse'
 import { supabase, callEdge, SERVICE_SECRET } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Send, Users } from 'lucide-react'
+import { exportCsv } from '../lib/exportCsv'
+import { Send, Users, Upload, Download } from 'lucide-react'
+
+const NOTIFY_TEMPLATE = `phone,title,body
+9876543210,🎉 Your run is verified!,Check your wallet for winnings
+9876543211,⏰ Challenge ending soon,Submit your run before time runs out`
 
 export function Notify() {
-  const [target, setTarget] = useState<'single' | 'all'>('single')
+  const [target, setTarget] = useState<'single' | 'all' | 'csv'>('single')
+  const [csvRows, setCsvRows] = useState<{ phone: string; title?: string; body?: string }[]>([])
+  const [csvProgress, setCsvProgress] = useState(0)
+  const fileRef = useRef<HTMLInputElement>(null)
   const [phone, setPhone] = useState('')
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -12,8 +21,60 @@ export function Notify() {
   const [logs, setLogs] = useState<any[]>([])
 
   async function handleSend() {
-    if (!title || !body) { toast('Title and body required', 'error'); return }
     setSending(true)
+
+    if (target === 'csv') {
+      if (!csvRows.length) { toast('Upload a CSV first', 'error'); setSending(false); return }
+
+      let success = 0, fail = 0
+      const results: { phone: string; status: string; message: string }[] = []
+
+      for (let i = 0; i < csvRows.length; i++) {
+        const row = csvRows[i]
+        const rowTitle = row.title || title
+        const rowBody = row.body || body
+
+        if (!row.phone || !rowTitle || !rowBody) {
+          results.push({ phone: row.phone || '?', status: 'error', message: 'Missing phone, title or body' })
+          fail++
+          continue
+        }
+
+        try {
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('phone', row.phone.replace(/\D/g, '').slice(-10))
+            .single()
+
+          if (!user) throw new Error('User not found')
+
+          await callEdge('send-notification', {
+            service_secret: SERVICE_SECRET,
+            user_id: user.id,
+            title: rowTitle,
+            body: rowBody,
+          })
+          results.push({ phone: row.phone, status: 'success', message: 'Sent' })
+          success++
+        } catch (e: any) {
+          results.push({ phone: row.phone, status: 'error', message: e.message })
+          fail++
+        }
+        setCsvProgress(Math.round(((i + 1) / csvRows.length) * 100))
+        await new Promise(r => setTimeout(r, 150))
+      }
+
+      exportCsv(results.map((r, i) => ({ row: i + 1, ...r, processed_at: new Date().toISOString() })) as Record<string, unknown>[], 'zelth_notify_results')
+      toast(`Sent to ${success} users, ${fail} failed`, success > 0 ? 'success' : 'error')
+      setLogs(prev => [{ time: new Date().toLocaleTimeString(), target: `CSV (${success}/${csvRows.length})`, title: title || 'Custom per row', status: success > 0 ? 'sent' : 'failed' }, ...prev])
+      setCsvRows([])
+      setCsvProgress(0)
+      setSending(false)
+      return
+    }
+
+    if (!title || !body) { toast('Title and body required', 'error'); setSending(false); return }
     try {
       if (target === 'single') {
         if (!phone) { toast('Enter phone number', 'error'); setSending(false); return }
@@ -28,7 +89,6 @@ export function Notify() {
         toast('Notification sent!')
         setLogs(prev => [{ time: new Date().toLocaleTimeString(), target: phone, title, status: 'sent' }, ...prev])
       } else {
-        // All users
         const { data: tokens } = await supabase.from('user_fcm_tokens').select('user_id')
         const userIds = (tokens || []).map((t: any) => t.user_id)
         let success = 0, fail = 0
@@ -80,6 +140,9 @@ export function Notify() {
                 <button className={`btn ${target === 'all' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTarget('all')}>
                   <Users size={13} /> All Users
                 </button>
+                <button className={`btn ${target === 'csv' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTarget('csv')}>
+                  <Upload size={13} /> CSV Upload
+                </button>
               </div>
             </div>
 
@@ -94,6 +157,47 @@ export function Notify() {
               <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
                 <div style={{ color: 'var(--red)', fontSize: 12, fontWeight: 600 }}>⚠️ Warning</div>
                 <div style={{ color: 'var(--text2)', fontSize: 12, marginTop: 4 }}>This will send a push notification to ALL users with FCM tokens. Use sparingly.</div>
+              </div>
+            )}
+
+            {target === 'csv' && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <label className="label">Upload CSV</label>
+                  <button className="btn btn-ghost btn-sm" onClick={() => {
+                    const blob = new Blob([NOTIFY_TEMPLATE], { type: 'text/csv' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url; a.download = 'zelth_notify_template.csv'; a.click()
+                    URL.revokeObjectURL(url)
+                  }}><Download size={12} /> Template</button>
+                </div>
+                <div
+                  style={{ border: '2px dashed var(--border2)', borderRadius: 8, padding: '16px', textAlign: 'center', cursor: 'pointer' }}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Upload size={20} color="var(--text3)" style={{ marginBottom: 6 }} />
+                  <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+                    {csvRows.length > 0 ? `${csvRows.length} rows loaded` : 'Drop CSV or click — columns: phone, title, body'}
+                  </div>
+                  <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    Papa.parse(file, {
+                      header: true,
+                      skipEmptyLines: true,
+                      complete: (result) => {
+                        setCsvRows(result.data as any)
+                        toast(`${result.data.length} rows loaded`, 'info')
+                      },
+                    })
+                  }} />
+                </div>
+                {csvRows.length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text2)' }}>
+                    ⚠️ Each row can have its own title/body. If empty, uses the title/body fields above as default.
+                  </div>
+                )}
               </div>
             )}
 
@@ -124,6 +228,15 @@ export function Notify() {
             <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '10px' }} onClick={handleSend} disabled={sending}>
               <Send size={14} /> {sending ? 'Sending...' : 'Send Notification'}
             </button>
+
+            {target === 'csv' && sending && csvProgress > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${csvProgress}%`, background: 'var(--orange)', transition: 'width 0.2s' }} />
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4, textAlign: 'center' }}>{csvProgress}%</div>
+              </div>
+            )}
           </div>
         </div>
 
