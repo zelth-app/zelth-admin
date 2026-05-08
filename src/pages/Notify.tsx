@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import Papa from 'papaparse'
-import { supabase, callEdge, SERVICE_SECRET } from '../lib/supabase'
+import { supabaseAdmin, callEdge, SERVICE_SECRET } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { exportCsv } from '../lib/exportCsv'
 import { Send, Users, Upload, Download } from 'lucide-react'
@@ -41,7 +41,7 @@ export function Notify() {
         }
 
         try {
-          const { data: user } = await supabase
+          const { data: user } = await supabaseAdmin
             .from('users')
             .select('id')
             .eq('phone', row.phone.replace(/\D/g, '').slice(-10))
@@ -78,7 +78,7 @@ export function Notify() {
     try {
       if (target === 'single') {
         if (!phone) { toast('Enter phone number', 'error'); setSending(false); return }
-        const { data: user } = await supabase.from('users').select('id').eq('phone', phone).single()
+        const { data: user } = await supabaseAdmin.from('users').select('id').eq('phone', phone).single()
         if (!user) { toast('User not found', 'error'); setSending(false); return }
         await callEdge('send-notification', {
           service_secret: SERVICE_SECRET,
@@ -89,7 +89,7 @@ export function Notify() {
         toast('Notification sent!')
         setLogs(prev => [{ time: new Date().toLocaleTimeString(), target: phone, title, status: 'sent' }, ...prev])
       } else {
-        const { data: tokens } = await supabase.from('user_fcm_tokens').select('user_id')
+        const { data: tokens } = await supabaseAdmin.from('user_fcm_tokens').select('user_id')
         const userIds = (tokens || []).map((t: any) => t.user_id)
         let success = 0, fail = 0
         for (const userId of userIds) {

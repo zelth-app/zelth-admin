@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase, callEdge, SERVICE_SECRET } from '../lib/supabase'
+import { supabaseAdmin, callEdge, SERVICE_SECRET } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { ExternalLink, Check, X, RefreshCw, Download } from 'lucide-react'
 import { exportCsv } from '../lib/exportCsv'
@@ -48,7 +48,7 @@ export function Submissions() {
   async function load() {
     setLoading(true)
     try {
-      let q = supabase
+      let q = supabaseAdmin
         .from('activity_submissions')
         .select(`
           id, status, strava_url, rejection_reason, submitted_at, verified_at,
@@ -99,7 +99,7 @@ export function Submissions() {
     setSaving(true)
     try {
       // Update submission
-      const { error: e1 } = await supabase
+      const { error: e1 } = await supabaseAdmin
         .from('activity_submissions')
         .update({ status: 'verified', verified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq('id', verifyModal.submission.submission_id)
@@ -132,7 +132,7 @@ export function Submissions() {
     if (!rejectModal.reason.trim()) { toast('Enter a rejection reason', 'error'); return }
     setSaving(true)
     try {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('activity_submissions')
         .update({
           status: 'rejected',

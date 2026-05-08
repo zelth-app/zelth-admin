@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabaseAdmin } from '../lib/supabase'
 import { Users, Trophy, CheckSquare, Wallet, TrendingUp, Clock } from 'lucide-react'
 
 interface Stats {
@@ -32,13 +32,13 @@ export function Dashboard() {
         { data: walletData },
         { data: recentSubsData },
       ] = await Promise.all([
-        supabase.from('users').select('*', { count: 'exact', head: true }),
-        supabase.from('challenges').select('*', { count: 'exact', head: true }).eq('is_active', true),
-        supabase.from('activity_submissions').select('*', { count: 'exact', head: true }),
-        supabase.from('activity_submissions').select('*', { count: 'exact', head: true }).eq('status', 'submitted'),
-        supabase.from('withdrawal_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('wallet').select('balance, total_earned'),
-        supabase.from('activity_submissions')
+        supabaseAdmin.from('users').select('*', { count: 'exact', head: true }),
+        supabaseAdmin.from('challenges').select('*', { count: 'exact', head: true }).eq('is_active', true),
+        supabaseAdmin.from('activity_submissions').select('*', { count: 'exact', head: true }),
+        supabaseAdmin.from('activity_submissions').select('*', { count: 'exact', head: true }).eq('status', 'submitted'),
+        supabaseAdmin.from('withdrawal_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabaseAdmin.from('wallet').select('balance, total_earned'),
+        supabaseAdmin.from('activity_submissions')
           .select('id, status, submitted_at, users(name, phone), challenges(title)')
           .order('submitted_at', { ascending: false })
           .limit(5),

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabaseAdmin } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { RefreshCw, Plus, Edit2, ToggleLeft, ToggleRight, Download } from 'lucide-react'
 import { exportCsv } from '../lib/exportCsv'
@@ -50,9 +50,9 @@ export function Challenges() {
     setLoading(true)
     try {
       const [{ data: ch }, { data: ty }, { data: counts }] = await Promise.all([
-        supabase.from('challenges').select('*, challenge_types(name, display_name)').order('sort_order'),
-        supabase.from('challenge_types').select('id, name, display_name'),
-        supabase.from('challenge_participants').select('challenge_id'),
+        supabaseAdmin.from('challenges').select('*, challenge_types(name, display_name)').order('sort_order'),
+        supabaseAdmin.from('challenge_types').select('id, name, display_name'),
+        supabaseAdmin.from('challenge_participants').select('challenge_id'),
       ])
 
       const countMap: Record<string, number> = {}
@@ -121,11 +121,11 @@ export function Challenges() {
       }
 
       if (editId) {
-        const { error } = await supabase.from('challenges').update(payload).eq('id', editId)
+        const { error } = await supabaseAdmin.from('challenges').update(payload).eq('id', editId)
         if (error) throw error
         toast('Challenge updated')
       } else {
-        const { error } = await supabase.from('challenges').insert(payload)
+        const { error } = await supabaseAdmin.from('challenges').insert(payload)
         if (error) throw error
         toast('Challenge created')
       }
@@ -140,7 +140,7 @@ export function Challenges() {
 
   async function toggleActive(c: Challenge) {
     try {
-      await supabase.from('challenges').update({ is_active: !c.is_active }).eq('id', c.id)
+      await supabaseAdmin.from('challenges').update({ is_active: !c.is_active }).eq('id', c.id)
       toast(`Challenge ${c.is_active ? 'deactivated' : 'activated'}`)
       load()
     } catch (e: any) {

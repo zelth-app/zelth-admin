@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabaseAdmin } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { exportCsv } from '../lib/exportCsv'
 import { RefreshCw, Download, Plus, Edit2 } from 'lucide-react'
@@ -32,7 +32,7 @@ export function ChallengeTypes() {
   async function load() {
     setLoading(true)
     try {
-      const { data, error } = await supabase.from('challenge_types').select('*').order('created_at')
+      const { data, error } = await supabaseAdmin.from('challenge_types').select('*').order('created_at')
       if (error) throw error
       setRows(data || [])
     } catch (e: any) { toast(e.message, 'error') }
@@ -44,11 +44,11 @@ export function ChallengeTypes() {
     setSaving(true)
     try {
       if (editId) {
-        const { error } = await supabase.from('challenge_types').update(form).eq('id', editId)
+        const { error } = await supabaseAdmin.from('challenge_types').update(form).eq('id', editId)
         if (error) throw error
         toast('Challenge type updated')
       } else {
-        const { error } = await supabase.from('challenge_types').insert(form)
+        const { error } = await supabaseAdmin.from('challenge_types').insert(form)
         if (error) throw error
         toast('Challenge type created')
       }

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import Papa from 'papaparse'
-import { supabase, callEdge, SERVICE_SECRET } from '../lib/supabase'
+import { supabaseAdmin, callEdge, SERVICE_SECRET } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { exportCsv } from '../lib/exportCsv'
 import { Upload, Download, CheckCircle, XCircle, Clock, ExternalLink } from 'lucide-react'
@@ -40,7 +40,7 @@ export function BulkVerify() {
   async function loadPendingSubmissions() {
     setLoadingPending(true)
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('activity_submissions')
         .select(`
           id, strava_url, submitted_at,
@@ -124,7 +124,7 @@ export function BulkVerify() {
     }
 
     const submissionIds = rows.map(r => r.submission_id).filter(Boolean)
-    const { data: existingVerified } = await supabase
+    const { data: existingVerified } = await supabaseAdmin
       .from('activity_submissions')
       .select('id, status')
       .in('id', submissionIds)
@@ -143,7 +143,7 @@ export function BulkVerify() {
         if (!row.submission_id || !row.action) throw new Error('Missing submission_id or action')
 
         if (row.action === 'verify') {
-          const { error: e1 } = await supabase
+          const { error: e1 } = await supabaseAdmin
             .from('activity_submissions')
             .update({ status: 'verified', verified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
             .eq('id', row.submission_id)
@@ -166,7 +166,7 @@ export function BulkVerify() {
 
         } else if (row.action === 'reject') {
           if (!row.rejection_reason) throw new Error('rejection_reason required for reject action')
-          const { error } = await supabase
+          const { error } = await supabaseAdmin
             .from('activity_submissions')
             .update({
               status: 'rejected',
