@@ -32,10 +32,10 @@ interface Result {
   message?: string;
 }
 
-const VERIFY_TEMPLATE = `INSTRUCTIONS,READ ONLY columns (do not edit ref_ columns),READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,DO NOT EDIT,DO NOT EDIT,DO NOT EDIT,DO NOT EDIT,FILL THIS,FILL THIS,FILL THIS,FILL THIS,FILL THIS,OPTIONAL,FILL IF REJECTING
-ref_user_name,ref_phone,ref_challenge,ref_entry_fee,ref_strava_url,ref_submitted_at,ref_win_streak,ref_prize_count,ref_cashback_count,ref_total_prize_won,ref_total_cashback_won,ref_last_win_code,submission_id,participant_id,user_id,challenge_id,action,amount,reward_type,win_code,metric_achieved,note,rejection_reason
-John Doe,9876543210,Morning Rush,79,https://strava.app.link/xxx,2026-05-01,P1,1,0,500,0,P1,SUB_UUID,PART_UUID,USER_UUID,CHAL_UUID,verify,500,prize,P2,5.2,Winner,
-Jane Doe,9876543211,Morning Rush,79,https://strava.app.link/yyy,2026-05-01,,,0,0,0,,SUB_UUID2,PART_UUID2,USER_UUID2,CHAL_UUID2,reject,,,,,Run paused multiple times`;
+const VERIFY_TEMPLATE = `INSTRUCTIONS,READ ONLY columns (do not edit ref_ columns),READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,DO NOT EDIT,DO NOT EDIT,DO NOT EDIT,DO NOT EDIT,FILL THIS,FILL THIS,FILL THIS,FILL THIS,FILL THIS,OPTIONAL,FILL IF REJECTING
+ref_user_name,ref_phone,ref_challenge,ref_attempt_number,ref_entry_fee,ref_strava_url,ref_submitted_at,ref_win_streak,ref_prize_count,ref_cashback_count,ref_total_prize_won,ref_total_cashback_won,ref_last_win_code,submission_id,participant_id,user_id,challenge_id,action,amount,reward_type,win_code,metric_achieved,note,rejection_reason
+John Doe,9876543210,Morning Rush,1,79,https://strava.app.link/xxx,2026-05-01,P1,1,0,500,0,P1,SUB_UUID,PART_UUID,USER_UUID,CHAL_UUID,verify,500,prize,P2,5.2,Winner,
+Jane Doe,9876543211,Morning Rush,2,79,https://strava.app.link/yyy,2026-05-01,,,0,0,0,,SUB_UUID2,PART_UUID2,USER_UUID2,CHAL_UUID2,reject,,,,,Run paused multiple times`;
 
 export function BulkVerify() {
   const [rows, setRows] = useState<CsvRow[]>([]);
@@ -57,7 +57,7 @@ export function BulkVerify() {
           `
           id, strava_url, submitted_at,
           users!inner(id, name, phone),
-          challenge_participants!inner(id, challenge_id),
+          challenge_participants!inner(id, challenge_id, attempt_number),
           challenges!inner(title, entry_fee)
         `,
         )
@@ -165,6 +165,7 @@ export function BulkVerify() {
       ref_user_name: s.users?.name,
       ref_phone: s.users?.phone,
       ref_challenge: s.challenges?.title,
+      ref_attempt_number: s.challenge_participants?.attempt_number || 1,
       ref_entry_fee: s.challenges?.entry_fee,
       ref_strava_url: s.strava_url,
       ref_submitted_at: s.submitted_at,
@@ -438,6 +439,7 @@ export function BulkVerify() {
                 <tr>
                   <th>User</th>
                   <th>Challenge</th>
+                  <th>Attempt</th>
                   <th>Strava Link</th>
                   <th>Win Streak</th>
                   <th>Prizes Won</th>
@@ -460,6 +462,9 @@ export function BulkVerify() {
                       </div>
                     </td>
                     <td>{s.challenges?.title}</td>
+                    <td style={{ textAlign: 'center', color: s.challenge_participants?.attempt_number > 1 ? 'var(--orange)' : 'var(--text3)', fontWeight: s.challenge_participants?.attempt_number > 1 ? 600 : 400 }}>
+                      #{s.challenge_participants?.attempt_number || 1}
+                    </td>
                     <td>
                       <a
                         href={s.strava_url}
