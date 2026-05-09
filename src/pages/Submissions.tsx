@@ -20,6 +20,7 @@ interface Submission {
   user_id: string
   wallet_id: string
   wallet_balance: number
+  metric_achieved?: number | null
 }
 
 interface VerifyModal {
@@ -53,7 +54,7 @@ export function Submissions() {
       let q = supabase
         .from('activity_submissions')
         .select(`
-          id, status, strava_url, rejection_reason, submitted_at, verified_at,
+          id, status, strava_url, rejection_reason, submitted_at, verified_at, metric_achieved,
           users!inner(id, name, phone),
           challenge_participants!inner(id, challenge_id),
           challenges!inner(id, title, entry_fee),
@@ -84,6 +85,7 @@ export function Submissions() {
         user_id: row.users?.id,
         wallet_id: row.users?.wallet?.[0]?.id,
         wallet_balance: Number(row.users?.wallet?.[0]?.balance || 0),
+        metric_achieved: row.metric_achieved ?? null,
       }))
 
       setRows(mapped)
@@ -232,6 +234,7 @@ export function Submissions() {
                   <th>User</th>
                   <th>Challenge</th>
                   <th>Strava Link</th>
+                  <th>Metric</th>
                   <th>Status</th>
                   <th>Submitted</th>
                   <th>Wallet</th>
@@ -253,6 +256,9 @@ export function Submissions() {
                       <a href={row.strava_url} target="_blank" rel="noopener noreferrer" className="link-cell" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <ExternalLink size={11} /> View on Strava
                       </a>
+                    </td>
+                    <td style={{ color: 'var(--text2)', fontSize: 12 }}>
+                      {(row as any).metric_achieved ? `${(row as any).metric_achieved}` : '—'}
                     </td>
                     <td>
                       <span className={`badge badge-${row.status}`}>{row.status}</span>
