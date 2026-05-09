@@ -30,3 +30,17 @@ export async function callEdge(fn: string, body: Record<string, unknown>) {
   if (!res.ok) throw new Error(data.error || 'Edge function error')
   return data
 }
+
+export async function callEdgeWithSecret(fn: string, body: Record<string, unknown>) {
+  const res = await fetch(`${EDGE_BASE}/${fn}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-service-secret': SERVICE_SECRET,
+    },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Edge function error')
+  return data
+}

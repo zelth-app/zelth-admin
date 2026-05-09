@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import Papa from 'papaparse'
-import { supabase, callEdge, SERVICE_SECRET } from '../lib/supabase'
+import { supabase, callEdgeWithSecret } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { exportCsv } from '../lib/exportCsv'
 import { Send, Users, Upload, Download } from 'lucide-react'
@@ -49,8 +49,7 @@ export function Notify() {
 
           if (!user) throw new Error('User not found')
 
-          await callEdge('send-notification', {
-            service_secret: SERVICE_SECRET,
+          await callEdgeWithSecret('send-notification', {
             user_id: user.id,
             title: rowTitle,
             body: rowBody,
@@ -80,8 +79,7 @@ export function Notify() {
         if (!phone) { toast('Enter phone number', 'error'); setSending(false); return }
         const { data: user } = await supabase.from('users').select('id').eq('phone', phone).single()
         if (!user) { toast('User not found', 'error'); setSending(false); return }
-        await callEdge('send-notification', {
-          service_secret: SERVICE_SECRET,
+        await callEdgeWithSecret('send-notification', {
           user_id: user.id,
           title,
           body,
@@ -94,8 +92,7 @@ export function Notify() {
         let success = 0, fail = 0
         for (const userId of userIds) {
           try {
-            await callEdge('send-notification', {
-              service_secret: SERVICE_SECRET,
+            await callEdgeWithSecret('send-notification', {
               user_id: userId,
               title,
               body,
