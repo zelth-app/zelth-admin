@@ -32,7 +32,8 @@ interface Result {
   message?: string;
 }
 
-const VERIFY_TEMPLATE = `ref_user_name,ref_phone,ref_challenge,ref_entry_fee,ref_strava_url,ref_submitted_at,ref_win_streak,ref_prize_count,ref_cashback_count,ref_total_prize_won,ref_total_cashback_won,ref_last_win_code,submission_id,participant_id,user_id,challenge_id,action,amount,reward_type,win_code,metric_achieved,note,rejection_reason
+const VERIFY_TEMPLATE = `INSTRUCTIONS,READ ONLY columns (do not edit ref_ columns),READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,READ ONLY,DO NOT EDIT,DO NOT EDIT,DO NOT EDIT,DO NOT EDIT,FILL THIS,FILL THIS,FILL THIS,FILL THIS,FILL THIS,OPTIONAL,FILL IF REJECTING
+ref_user_name,ref_phone,ref_challenge,ref_entry_fee,ref_strava_url,ref_submitted_at,ref_win_streak,ref_prize_count,ref_cashback_count,ref_total_prize_won,ref_total_cashback_won,ref_last_win_code,submission_id,participant_id,user_id,challenge_id,action,amount,reward_type,win_code,metric_achieved,note,rejection_reason
 John Doe,9876543210,Morning Rush,79,https://strava.app.link/xxx,2026-05-01,P1,1,0,500,0,P1,SUB_UUID,PART_UUID,USER_UUID,CHAL_UUID,verify,500,prize,P2,5.2,Winner,
 Jane Doe,9876543211,Morning Rush,79,https://strava.app.link/yyy,2026-05-01,,,0,0,0,,SUB_UUID2,PART_UUID2,USER_UUID2,CHAL_UUID2,reject,,,,,Run paused multiple times`;
 
@@ -203,6 +204,11 @@ export function BulkVerify() {
     Papa.parse<CsvRow>(file, {
       header: true,
       skipEmptyLines: true,
+      beforeFirstChunk: (chunk) => {
+        const lines = chunk.split('\n')
+        lines.splice(0, 1) // remove instructions row
+        return lines.join('\n')
+      },
       complete: (result) => {
         setRows(result.data);
         toast(`${result.data.length} rows loaded`, "info");
