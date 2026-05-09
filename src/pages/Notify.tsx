@@ -122,7 +122,7 @@ export function Notify() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 1fr)', gap: 24 }}>
         <div>
           <div className="card" style={{ marginBottom: 16 }}>
             <div style={{ fontWeight: 600, marginBottom: 16 }}>🔔 Compose Notification</div>
@@ -238,7 +238,7 @@ export function Notify() {
         </div>
 
         {/* Logs */}
-        <div className="card">
+        <div className="card" style={{ padding: 20 }}>
           <div style={{ fontWeight: 600, marginBottom: 16 }}>📋 Recent Sends</div>
           {logs.length === 0 ? (
             <div className="empty" style={{ padding: 40 }}>
@@ -248,10 +248,10 @@ export function Notify() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {logs.map((log, i) => (
-                <div key={i} style={{ background: 'var(--bg3)', borderRadius: 8, padding: 12, borderLeft: `3px solid ${log.status === 'sent' ? 'var(--green)' : 'var(--red)'}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{log.title}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>{log.time}</span>
+                <div key={i} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px', borderLeft: `3px solid ${log.status === 'sent' ? 'var(--green)' : 'var(--red)'}` }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.title}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>{log.time}</span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text2)' }}>→ {log.target}</div>
                 </div>
