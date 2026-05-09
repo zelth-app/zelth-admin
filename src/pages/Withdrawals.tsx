@@ -25,6 +25,8 @@ export function Withdrawals() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('pending')
   const [saving, setSaving] = useState<string | null>(null)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [rejectModal, setRejectModal] = useState<{ id: string; reason: string; user_id: string; amount: number; wallet_id: string; txn_id: string | null } | null>(null)
 
   useEffect(() => { load() }, [statusFilter])
@@ -141,6 +143,12 @@ export function Withdrawals() {
     }
   }
 
+  const filtered = rows.filter(r => {
+    const matchFrom = !dateFrom || new Date(r.requested_at) >= new Date(dateFrom)
+    const matchTo = !dateTo || new Date(r.requested_at) <= new Date(dateTo)
+    return matchFrom && matchTo
+  })
+
   return (
     <div style={{ padding: 24 }}>
       <div className="page-header">
@@ -151,7 +159,7 @@ export function Withdrawals() {
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={13} /> Refresh</button>
           <button className="btn btn-ghost btn-sm" onClick={() => exportCsv(
-            rows.map(r => ({
+            filtered.map(r => ({
               id: r.id, user_name: r.user_name, phone: r.phone,
               amount: r.amount, upi_id: r.upi_id, status: r.status,
               requested_at: r.requested_at, processed_at: r.processed_at,
@@ -169,11 +177,37 @@ export function Withdrawals() {
           <option value="completed">Completed</option>
           <option value="failed">Failed</option>
         </select>
-        <div style={{ color: 'var(--text3)', fontSize: 12 }}>{rows.length} results</div>
+        <input
+          className="input"
+          type="datetime-local"
+          style={{ width: 180 }}
+          value={dateFrom}
+          onChange={e => setDateFrom(e.target.value)}
+          title="From date"
+        />
+        <input
+          className="input"
+          type="datetime-local"
+          style={{ width: 180 }}
+          value={dateTo}
+          onChange={e => setDateTo(e.target.value)}
+          title="To date"
+        />
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => { setDateFrom(''); setDateTo('') }}
+          title="Clear dates"
+        >
+          ✕ Clear
+        </button>
+        <div style={{ color: 'var(--text3)', fontSize: 12 }}>
+          {filtered.length} results
+          {(dateFrom || dateTo) && ` (filtered)`}
+        </div>
       </div>
 
       <div className="card" style={{ padding: 0 }}>
-        {loading ? <div className="loading">Loading...</div> : rows.length === 0 ? (
+        {loading ? <div className="loading">Loading...</div> : filtered.length === 0 ? (
           <div className="empty"><div className="empty-icon">💸</div><div className="empty-text">No withdrawals found</div></div>
         ) : (
           <div className="table-wrap">
@@ -190,7 +224,7 @@ export function Withdrawals() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(row => (
+                {filtered.map(row => (
                   <tr key={row.id}>
                     <td>
                       <div style={{ fontWeight: 500 }}>{row.user_name}</div>

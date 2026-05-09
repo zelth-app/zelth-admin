@@ -35,6 +35,8 @@ export function BulkVerify() {
   const [progress, setProgress] = useState(0)
   const [pendingSubs, setPendingSubs] = useState<any[]>([])
   const [loadingPending, setLoadingPending] = useState(false)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function loadPendingSubmissions() {
@@ -60,6 +62,12 @@ export function BulkVerify() {
     }
   }
 
+  const filteredPendingSubs = pendingSubs.filter(s => {
+    const matchFrom = !dateFrom || new Date(s.submitted_at) >= new Date(dateFrom)
+    const matchTo = !dateTo || new Date(s.submitted_at) <= new Date(dateTo)
+    return matchFrom && matchTo
+  })
+
   function downloadTemplate() {
     const blob = new Blob([VERIFY_TEMPLATE], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -69,8 +77,8 @@ export function BulkVerify() {
   }
 
   function downloadPendingCSV() {
-    if (!pendingSubs.length) { toast('Load pending submissions first', 'error'); return }
-    const csvRows = pendingSubs.map((s: any) => ({
+    if (!filteredPendingSubs.length) { toast('Load pending submissions first', 'error'); return }
+    const csvRows = filteredPendingSubs.map((s: any) => ({
       ref_user_name: s.users?.name,
       ref_phone: s.users?.phone,
       ref_challenge: s.challenges?.title,
@@ -225,13 +233,44 @@ export function BulkVerify() {
         <p style={{ color: 'var(--text2)', fontSize: 13, marginBottom: 12 }}>
           Download all pending submissions as CSV, fill in amounts and actions, then upload back.
         </p>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn btn-ghost" onClick={loadPendingSubmissions} disabled={loadingPending}>
             {loadingPending ? 'Loading...' : '🔄 Load Pending Submissions'}
           </button>
           {pendingSubs.length > 0 && (
+            <>
+              <input
+                className="input"
+                type="datetime-local"
+                style={{ width: 180 }}
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                title="From date"
+              />
+              <input
+                className="input"
+                type="datetime-local"
+                style={{ width: 180 }}
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                title="To date"
+              />
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => { setDateFrom(''); setDateTo('') }}
+                title="Clear dates"
+              >
+                ✕ Clear
+              </button>
+              <div style={{ color: 'var(--text3)', fontSize: 12 }}>
+                {filteredPendingSubs.length} results
+                {(dateFrom || dateTo) && ` (filtered)`}
+              </div>
+            </>
+          )}
+          {pendingSubs.length > 0 && (
             <button className="btn btn-primary" onClick={downloadPendingCSV}>
-              <Download size={13} /> Download {pendingSubs.length} Pending as CSV
+              <Download size={13} /> Download {filteredPendingSubs.length} Pending as CSV
             </button>
           )}
         </div>
@@ -243,7 +282,7 @@ export function BulkVerify() {
                 <tr><th>User</th><th>Challenge</th><th>Strava Link</th><th>Submitted</th></tr>
               </thead>
               <tbody>
-                {pendingSubs.map((s: any) => (
+                {filteredPendingSubs.map((s: any) => (
                   <tr key={s.id}>
                     <td>
                       <div style={{ fontWeight: 500 }}>{s.users?.name}</div>

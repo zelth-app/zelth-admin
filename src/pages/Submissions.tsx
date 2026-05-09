@@ -42,6 +42,8 @@ export function Submissions() {
   const [verifyModal, setVerifyModal] = useState<VerifyModal | null>(null)
   const [rejectModal, setRejectModal] = useState<RejectModal | null>(null)
   const [saving, setSaving] = useState(false)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   useEffect(() => { load() }, [statusFilter])
 
@@ -149,9 +151,12 @@ export function Submissions() {
     }
   }
 
-  const filtered = rows.filter(r =>
-    !search || r.phone.includes(search) || r.user_name.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = rows.filter(r => {
+    const matchSearch = !search || r.phone.includes(search) || r.user_name.toLowerCase().includes(search.toLowerCase())
+    const matchFrom = !dateFrom || new Date(r.submitted_at) >= new Date(dateFrom)
+    const matchTo = !dateTo || new Date(r.submitted_at) <= new Date(dateTo)
+    return matchSearch && matchFrom && matchTo
+  })
 
   return (
     <div style={{ padding: 24 }}>
@@ -185,7 +190,33 @@ export function Submissions() {
           <option value="rejected">Rejected</option>
         </select>
         <input className="input" style={{ width: 220 }} placeholder="Search by name or phone..." value={search} onChange={e => setSearch(e.target.value)} />
-        <div style={{ color: 'var(--text3)', fontSize: 12 }}>{filtered.length} results</div>
+        <input
+          className="input"
+          type="datetime-local"
+          style={{ width: 180 }}
+          value={dateFrom}
+          onChange={e => setDateFrom(e.target.value)}
+          title="From date"
+        />
+        <input
+          className="input"
+          type="datetime-local"
+          style={{ width: 180 }}
+          value={dateTo}
+          onChange={e => setDateTo(e.target.value)}
+          title="To date"
+        />
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => { setDateFrom(''); setDateTo('') }}
+          title="Clear dates"
+        >
+          ✕ Clear
+        </button>
+        <div style={{ color: 'var(--text3)', fontSize: 12 }}>
+          {filtered.length} results
+          {(dateFrom || dateTo) && ` (filtered)`}
+        </div>
       </div>
 
       <div className="card" style={{ padding: 0 }}>
