@@ -69,6 +69,7 @@ input, select, textarea { font-family: var(--font); outline: none; }
 }
 .input:focus { border-color: var(--orange); }
 .input::placeholder { color: var(--text3); }
+.input::-webkit-calendar-picker-indicator { filter: invert(0.6); cursor: pointer; }
 
 .card {
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius2);

@@ -180,7 +180,7 @@ export function Withdrawals() {
         <input
           className="input"
           type="datetime-local"
-          style={{ width: 180 }}
+          style={{ width: 210 }}
           value={dateFrom}
           onChange={e => setDateFrom(e.target.value)}
           title="From date"
@@ -188,7 +188,7 @@ export function Withdrawals() {
         <input
           className="input"
           type="datetime-local"
-          style={{ width: 180 }}
+          style={{ width: 210 }}
           value={dateTo}
           onChange={e => setDateTo(e.target.value)}
           title="To date"
