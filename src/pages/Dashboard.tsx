@@ -10,6 +10,8 @@ interface Stats {
   withdrawals: number
   total_wallet: number
   total_earned: number
+  active_subscribers: number
+  pending_coach: number
 }
 
 export function Dashboard() {
@@ -31,6 +33,8 @@ export function Dashboard() {
         { count: withdrawals },
         { data: walletData },
         { data: recentSubsData },
+        { count: active_subscribers },
+        { count: pending_coach },
       ] = await Promise.all([
         supabase.from('users').select('*', { count: 'exact', head: true }),
         supabase.from('challenges').select('*', { count: 'exact', head: true }).eq('is_active', true),
@@ -42,6 +46,8 @@ export function Dashboard() {
           .select('id, status, submitted_at, users(name, phone), challenges(title)')
           .order('submitted_at', { ascending: false })
           .limit(5),
+        supabase.from('users').select('*', { count: 'exact', head: true }).gt('subscription_end', new Date().toISOString()),
+        supabase.from('users').select('*', { count: 'exact', head: true }).gt('subscription_end', new Date().toISOString()).eq('coach_active', false),
       ])
 
       const totalWallet = (walletData || []).reduce((sum, w) => sum + Number(w.balance), 0)
@@ -55,6 +61,8 @@ export function Dashboard() {
         withdrawals: withdrawals || 0,
         total_wallet: totalWallet,
         total_earned: totalEarned,
+        active_subscribers: active_subscribers || 0,
+        pending_coach: pending_coach || 0,
       })
       setRecentSubs(recentSubsData || [])
     } catch (e) {
@@ -72,7 +80,9 @@ export function Dashboard() {
     { label: 'Pending Reviews', value: stats?.pending_submissions, icon: Clock, color: 'var(--yellow)', alert: (stats?.pending_submissions || 0) > 0 },
     { label: 'Total Submissions', value: stats?.submissions, icon: CheckSquare, color: 'var(--green)' },
     { label: 'Pending Withdrawals', value: stats?.withdrawals, icon: Wallet, color: 'var(--purple)', alert: (stats?.withdrawals || 0) > 0 },
-    { label: 'Total Earned (₹)', value: `₹${stats?.total_earned?.toLocaleString('en-IN')}`, icon: TrendingUp, color: 'var(--green)' },
+    { label: 'Total Coins Earned', value: stats?.total_earned?.toLocaleString('en-IN'), icon: TrendingUp, color: 'var(--green)' },
+    { label: 'Active Subscribers', value: stats?.active_subscribers, icon: Users, color: 'var(--orange)' },
+    { label: 'Pending Coach Setup', value: stats?.pending_coach, icon: Clock, color: 'var(--yellow)', alert: (stats?.pending_coach || 0) > 0 },
   ]
 
   return (
@@ -85,7 +95,7 @@ export function Dashboard() {
         <button className="btn btn-ghost btn-sm" onClick={load}>Refresh</button>
       </div>
 
-      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         {statCards.map(({ label, value, icon: Icon, color, alert }) => (
           <div key={label} className="stat-card" style={{ borderColor: alert ? 'rgba(245,166,35,0.4)' : undefined }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
