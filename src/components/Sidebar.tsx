@@ -10,6 +10,7 @@ import {
   Bell,
   FileCheck,
   Tag,
+  Dumbbell,
 } from "lucide-react";
 
 const links = [
@@ -18,6 +19,7 @@ const links = [
   { to: "/bulk-verify", icon: FileCheck, label: "Bulk Verify" },
   { to: "/withdrawals", icon: Wallet, label: "Withdrawals" },
   { to: "/users", icon: Users, label: "Users" },
+  { to: "/coach", icon: Dumbbell, label: "Coach" },
   { to: "/challenges", icon: Trophy, label: "Challenges" },
   { to: "/challenge-types", icon: Tag, label: "Challenge Types" },
   { to: "/bulk-credit", icon: Upload, label: "Bulk Credit" },

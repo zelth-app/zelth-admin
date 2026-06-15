@@ -12,6 +12,7 @@ import { BulkCredit } from './pages/BulkCredit'
 import { Notify } from './pages/Notify'
 import { BulkVerify } from './pages/BulkVerify'
 import { ChallengeTypes } from './pages/ChallengeTypes'
+import { Coach } from './pages/Coach'
 
 interface ToastState {
   id: number
@@ -60,6 +61,7 @@ function App() {
             <Route path="/submissions" element={<Submissions />} />
             <Route path="/withdrawals" element={<Withdrawals />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/coach" element={<Coach />} />
             <Route path="/challenges" element={<Challenges />} />
             <Route path="/bulk-verify" element={<BulkVerify />} />
             <Route path="/challenge-types" element={<ChallengeTypes />} />
