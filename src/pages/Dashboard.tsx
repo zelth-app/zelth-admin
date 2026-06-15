@@ -12,6 +12,8 @@ interface Stats {
   total_earned: number
   active_subscribers: number
   pending_coach: number
+  total_revenue: number
+  today_revenue: number
 }
 
 export function Dashboard() {
@@ -35,6 +37,8 @@ export function Dashboard() {
         { data: recentSubsData },
         { count: active_subscribers },
         { count: pending_coach },
+        { data: totalRevenueData },
+        { data: todayRevenueData },
       ] = await Promise.all([
         supabase.from('users').select('*', { count: 'exact', head: true }),
         supabase.from('challenges').select('*', { count: 'exact', head: true }).eq('is_active', true),
@@ -48,10 +52,14 @@ export function Dashboard() {
           .limit(5),
         supabase.from('users').select('*', { count: 'exact', head: true }).gt('subscription_end', new Date().toISOString()),
         supabase.from('users').select('*', { count: 'exact', head: true }).gt('subscription_end', new Date().toISOString()).eq('coach_active', false),
+        supabase.from('orders').select('amount').eq('status', 'paid'),
+        supabase.from('orders').select('amount').eq('status', 'paid').gte('created_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
       ])
 
       const totalWallet = (walletData || []).reduce((sum, w) => sum + Number(w.balance), 0)
       const totalEarned = (walletData || []).reduce((sum, w) => sum + Number(w.total_earned), 0)
+      const totalRevenue = (totalRevenueData || []).reduce((sum, o) => sum + Number(o.amount), 0)
+      const todayRevenue = (todayRevenueData || []).reduce((sum, o) => sum + Number(o.amount), 0)
 
       setStats({
         users: users || 0,
@@ -63,6 +71,8 @@ export function Dashboard() {
         total_earned: totalEarned,
         active_subscribers: active_subscribers || 0,
         pending_coach: pending_coach || 0,
+        total_revenue: totalRevenue,
+        today_revenue: todayRevenue,
       })
       setRecentSubs(recentSubsData || [])
     } catch (e) {
@@ -76,6 +86,8 @@ export function Dashboard() {
 
   const statCards = [
     { label: 'Total Users', value: stats?.users, icon: Users, color: 'var(--blue)' },
+    { label: 'Total Revenue', value: `₹${stats?.total_revenue?.toLocaleString('en-IN')}`, icon: TrendingUp, color: 'var(--green)' },
+    { label: "Today's Revenue", value: `₹${stats?.today_revenue?.toLocaleString('en-IN')}`, icon: TrendingUp, color: 'var(--orange)' },
     { label: 'Active Challenges', value: stats?.challenges, icon: Trophy, color: 'var(--orange)' },
     { label: 'Pending Reviews', value: stats?.pending_submissions, icon: Clock, color: 'var(--yellow)', alert: (stats?.pending_submissions || 0) > 0 },
     { label: 'Total Submissions', value: stats?.submissions, icon: CheckSquare, color: 'var(--green)' },
