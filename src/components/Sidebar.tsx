@@ -11,6 +11,7 @@ import {
   FileCheck,
   Tag,
   Dumbbell,
+  Gift,
 } from "lucide-react";
 
 const links = [
@@ -22,6 +23,7 @@ const links = [
   { to: "/coach", icon: Dumbbell, label: "Coach" },
   { to: "/challenges", icon: Trophy, label: "Challenges" },
   { to: "/challenge-types", icon: Tag, label: "Challenge Types" },
+  { to: "/prize-templates", icon: Gift, label: "Prize Templates" },
   { to: "/bulk-credit", icon: Upload, label: "Bulk Credit" },
   { to: "/notify", icon: Bell, label: "Notify" },
 ];

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, adminDb } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { RefreshCw, Plus, Edit2, ToggleLeft, ToggleRight, Download } from 'lucide-react'
+import { RefreshCw, Plus, Edit2, ToggleLeft, ToggleRight, Download, DollarSign } from 'lucide-react'
 import { exportCsv } from '../lib/exportCsv'
 
 interface Challenge {
@@ -23,6 +23,9 @@ interface Challenge {
   cashback_tiers: any[]
   video_url: string | null
   prize_pool_template_id: string | null
+  has_pool: boolean
+  pool: number[] | null
+  pool_generation: number
 }
 
 interface ChallengeType {
@@ -36,6 +39,7 @@ interface PrizeTemplate {
   name: string
   description: string | null
   is_active: boolean
+  prizes: number[]
 }
 
 const blankForm = {
@@ -56,23 +60,30 @@ export function Challenges() {
   const [form, setForm] = useState(blankForm)
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [poolModal, setPoolModal] = useState<Challenge | null>(null)
+  const [poolForm, setPoolForm] = useState({ prizes: '', template_id: '' })
+  const [poolSaving, setPoolSaving] = useState(false)
 
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
     try {
-      const [chRes, { data: ty }, { data: counts }, { data: templateData }] = await Promise.all([
+      const [chRes, { data: ty }, { data: counts }, { data: templateData }, { data: poolRows }] = await Promise.all([
         adminDb('select', { table: 'challenges', columns: '*, challenge_types(name, display_name)', order: { column: 'sort_order', ascending: true } }),
         supabase.from('challenge_types').select('id, name, display_name'),
         supabase.from('challenge_participants').select('challenge_id'),
-        supabase.from('prize_pool_templates').select('id, name, description, is_active').eq('is_active', true).order('created_at'),
+        supabase.from('prize_pool_templates').select('id, name, description, is_active, prizes').eq('is_active', true).order('created_at'),
+        supabase.from('challenge_prize_pools').select('challenge_id, pool, generation, is_active').eq('is_active', true),
       ])
 
       const ch = chRes.data
 
       const countMap: Record<string, number> = {}
       for (const c of counts || []) countMap[c.challenge_id] = (countMap[c.challenge_id] || 0) + 1
+
+      const poolMap: Record<string, { pool: number[]; generation: number }> = {}
+      for (const p of poolRows || []) poolMap[p.challenge_id] = { pool: p.pool || [], generation: p.generation || 1 }
 
       setChallenges((ch || []).map((c: any) => ({
         id: c.id, title: c.title,
@@ -86,6 +97,9 @@ export function Challenges() {
         cashback_tiers: c.cashback_tiers || [],
         video_url: c.video_url ?? null,
         prize_pool_template_id: c.prize_pool_template_id ?? null,
+        has_pool: !!poolMap[c.id],
+        pool: poolMap[c.id]?.pool ?? null,
+        pool_generation: poolMap[c.id]?.generation ?? 0,
       })))
       setTypes(ty || [])
       setTemplates(templateData || [])
@@ -151,30 +165,32 @@ export function Challenges() {
         toast('Challenge updated')
       } else {
         const res = await adminDb('insert', { table: 'challenges', data: payload })
-        const newId = res.data?.[0]?.id
 
-        // If a template is selected, create the challenge_prize_pools row.
-        // Note: prize_pool_templates.prizes is [] in existing DB rows — pool is
-        // inserted empty here; PM should populate it separately via challenge_prize_pools.
-        if (newId && form.prize_pool_template_id) {
-          const { data: tpl } = await supabase
-            .from('prize_pool_templates')
-            .select('prizes')
-            .eq('id', form.prize_pool_template_id)
-            .single()
+        if (form.prize_pool_template_id) {
+          const [{ data: tpl }, { data: newChallenge }] = await Promise.all([
+            supabase.from('prize_pool_templates').select('prizes').eq('id', form.prize_pool_template_id).single(),
+            res.data?.[0]?.id
+              ? Promise.resolve({ data: { id: res.data[0].id } })
+              : supabase.from('challenges').select('id').eq('title', form.title).order('created_at', { ascending: false }).limit(1).single(),
+          ])
           await adminDb('insert', {
             table: 'challenge_prize_pools',
             data: {
-              challenge_id: newId,
+              challenge_id: newChallenge!.id,
               template_id: form.prize_pool_template_id,
               pool: tpl?.prizes ?? [],
               generation: 1,
               is_active: true,
             },
           })
+          if (!tpl?.prizes?.length) {
+            toast('Challenge created but template has no prizes defined. Update via Set Pool.', 'error')
+          } else {
+            toast('Challenge created')
+          }
+        } else {
+          toast('Challenge created')
         }
-
-        toast('Challenge created')
       }
       setModal(null)
       load()
@@ -192,6 +208,47 @@ export function Challenges() {
       load()
     } catch (e: any) {
       toast(e.message, 'error')
+    }
+  }
+
+  function openPoolModal(c: Challenge) {
+    setPoolModal(c)
+    setPoolForm({ prizes: c.pool ? c.pool.join(', ') : '', template_id: '' })
+  }
+
+  async function handlePoolSave() {
+    if (!poolModal) return
+    setPoolSaving(true)
+    try {
+      const pool = poolForm.prizes
+        .split(',')
+        .map(s => Number(s.trim()))
+        .filter(n => !isNaN(n) && n > 0)
+      if (poolModal.has_pool) {
+        await adminDb('update', {
+          table: 'challenge_prize_pools',
+          data: { pool, generation: poolModal.pool_generation + 1, is_active: true },
+          filters: { challenge_id: poolModal.id },
+        })
+      } else {
+        await adminDb('insert', {
+          table: 'challenge_prize_pools',
+          data: {
+            challenge_id: poolModal.id,
+            template_id: poolForm.template_id || null,
+            pool,
+            generation: 1,
+            is_active: true,
+          },
+        })
+      }
+      toast('Pool saved')
+      setPoolModal(null)
+      load()
+    } catch (e: any) {
+      toast(e.message, 'error')
+    } finally {
+      setPoolSaving(false)
     }
   }
 
@@ -234,6 +291,7 @@ export function Challenges() {
                   <th>Type</th>
                   <th>Entry Fee</th>
                   <th>Prize Pool</th>
+                  <th>Pool</th>
                   <th>Participants</th>
                   <th>Total Slots</th>
                   <th>Window</th>
@@ -249,6 +307,12 @@ export function Challenges() {
                     <td><span className="badge badge-pending">{c.challenge_type}</span></td>
                     <td style={{ color: 'var(--orange)', fontWeight: 600 }}>₹{c.entry_fee}</td>
                     <td style={{ color: 'var(--green)' }}>₹{c.prize_pool.toLocaleString('en-IN')}</td>
+                    <td>
+                      {c.has_pool && c.pool && c.pool.length > 0
+                        ? <span className="badge badge-verified" title={c.pool.join(', ')}>✅ ₹{Math.min(...c.pool).toLocaleString('en-IN')}–₹{Math.max(...c.pool).toLocaleString('en-IN')}</span>
+                        : <span className="badge badge-pending">⚠️ No Pool</span>
+                      }
+                    </td>
                     <td style={{ textAlign: 'center' }}>
                       <span style={{ fontWeight: 600 }}>{c.participant_count}</span>
                       <span style={{ color: 'var(--text3)', fontSize: 11 }}>/{c.total_slots}</span>
@@ -267,6 +331,7 @@ export function Challenges() {
                         <button className="btn btn-ghost btn-sm" onClick={() => toggleActive(c)}>
                           {c.is_active ? <ToggleRight size={14} color="var(--green)" /> : <ToggleLeft size={14} />}
                         </button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => openPoolModal(c)} title="Set Pool"><DollarSign size={12} /></button>
                       </div>
                     </td>
                   </tr>
@@ -368,6 +433,60 @@ export function Challenges() {
               <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setModal(null)}>Cancel</button>
               <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSave} disabled={saving}>
                 {saving ? 'Saving...' : modal === 'create' ? 'Create Challenge' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {poolModal && (
+        <div className="modal-overlay" onClick={() => setPoolModal(null)}>
+          <div className="modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-title">💰 Set Prize Pool — {poolModal.title}</div>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {poolModal.has_pool && poolModal.pool && (
+                <div style={{ background: 'var(--bg2)', borderRadius: 'var(--radius)', padding: '10px 12px', fontSize: 12 }}>
+                  <div style={{ color: 'var(--text3)', marginBottom: 4 }}>Current pool (Gen {poolModal.pool_generation})</div>
+                  <div style={{ fontFamily: 'var(--mono)', color: 'var(--text2)' }}>
+                    {poolModal.pool.map(p => `₹${p.toLocaleString('en-IN')}`).join(', ')}
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className="label">Fill from Template</label>
+                <select
+                  className="input filter-select"
+                  style={{ width: '100%' }}
+                  value={poolForm.template_id}
+                  onChange={e => {
+                    const tId = e.target.value
+                    const tpl = templates.find(t => t.id === tId)
+                    setPoolForm(prev => ({
+                      ...prev,
+                      template_id: tId,
+                      prizes: tpl && tpl.prizes.length > 0 ? tpl.prizes.join(', ') : prev.prizes,
+                    }))
+                  }}
+                >
+                  <option value="">Select template to auto-fill</option>
+                  {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Prize Amounts (₹, comma-separated)</label>
+                <textarea
+                  className="input"
+                  rows={4}
+                  value={poolForm.prizes}
+                  onChange={e => setPoolForm(prev => ({ ...prev, prizes: e.target.value }))}
+                  placeholder="5000, 3000, 2000, 1000, 500"
+                  style={{ resize: 'vertical', fontFamily: 'var(--mono)', fontSize: 12 }}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setPoolModal(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex: 2 }} onClick={handlePoolSave} disabled={poolSaving}>
+                {poolSaving ? 'Saving...' : poolModal.has_pool ? 'Update Pool' : 'Create Pool'}
               </button>
             </div>
           </div>

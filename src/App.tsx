@@ -12,6 +12,7 @@ import { BulkCredit } from './pages/BulkCredit'
 import { Notify } from './pages/Notify'
 import { BulkVerify } from './pages/BulkVerify'
 import { ChallengeTypes } from './pages/ChallengeTypes'
+import { PrizePoolTemplates } from './pages/PrizePoolTemplates'
 import { Coach } from './pages/Coach'
 
 interface ToastState {
@@ -65,6 +66,7 @@ function App() {
             <Route path="/challenges" element={<Challenges />} />
             <Route path="/bulk-verify" element={<BulkVerify />} />
             <Route path="/challenge-types" element={<ChallengeTypes />} />
+            <Route path="/prize-templates" element={<PrizePoolTemplates />} />
             <Route path="/bulk-credit" element={<BulkCredit />} />
             <Route path="/notify" element={<Notify />} />
             <Route path="*" element={<Navigate to="/" />} />
