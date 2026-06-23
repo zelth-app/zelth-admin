@@ -21,6 +21,7 @@ interface Challenge {
   participant_count: number
   rules: string[]
   cashback_tiers: any[]
+  video_url: string | null
 }
 
 interface ChallengeType {
@@ -35,6 +36,7 @@ const blankForm = {
   min_target: '', target_unit: 'meters', sort_order: '1',
   total_slots: '500', rules: '',
   cashback_tiers: '[{"min_km": 2, "percent": 20}, {"min_km": 5, "percent": 50}]',
+  video_url: '',
 }
 
 export function Challenges() {
@@ -72,6 +74,7 @@ export function Challenges() {
         participant_count: countMap[c.id] || 0,
         rules: c.rules || [],
         cashback_tiers: c.cashback_tiers || [],
+        video_url: c.video_url ?? null,
       })))
       setTypes(ty || [])
     } catch (e: any) {
@@ -97,6 +100,7 @@ export function Challenges() {
       sort_order: String(c.sort_order), total_slots: String(c.total_slots),
       rules: Array.isArray(c.rules) ? c.rules.join('\n') : '',
       cashback_tiers: c.cashback_tiers ? JSON.stringify(c.cashback_tiers, null, 2) : '',
+      video_url: c.video_url || '',
     })
     setEditId(c.id)
     setModal('edit')
@@ -124,6 +128,7 @@ export function Challenges() {
         total_slots: Number(form.total_slots),
         cashback_tiers: cashback,
         rules,
+        video_url: form.video_url || null,
         ...(form.challenge_type_id ? { challenge_type_id: form.challenge_type_id } : {}),
       }
 
@@ -303,6 +308,10 @@ export function Challenges() {
               <div>
                 <label className="label">Rules (one per line)</label>
                 <textarea className="input" rows={4} value={form.rules} onChange={e => f('rules', e.target.value)} placeholder="Complete your run using Strava&#10;Minimum 2km required" style={{ resize: 'vertical' }} />
+              </div>
+              <div>
+                <label className="label">Video URL (optional)</label>
+                <input className="input" value={form.video_url} onChange={e => f('video_url', e.target.value)} placeholder="https://res.cloudinary.com/..." />
               </div>
               <div>
                 <label className="label">Cashback Tiers (JSON)</label>
