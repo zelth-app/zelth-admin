@@ -22,6 +22,7 @@ interface Challenge {
   rules: string[]
   cashback_tiers: any[]
   video_url: string | null
+  prize_pool_template_id: string | null
 }
 
 interface ChallengeType {
@@ -30,18 +31,26 @@ interface ChallengeType {
   display_name: string
 }
 
+interface PrizeTemplate {
+  id: string
+  name: string
+  description: string | null
+  is_active: boolean
+}
+
 const blankForm = {
   title: '', entry_fee: '', prize_pool: '', challenge_type_id: '',
   start_date: '', end_date: '', personal_window_days: '7',
   min_target: '', target_unit: 'meters', sort_order: '1',
   total_slots: '500', rules: '',
   cashback_tiers: '[{"min_km": 2, "percent": 20}, {"min_km": 5, "percent": 50}]',
-  video_url: '',
+  video_url: '', prize_pool_template_id: '',
 }
 
 export function Challenges() {
   const [challenges, setChallenges] = useState<Challenge[]>([])
   const [types, setTypes] = useState<ChallengeType[]>([])
+  const [templates, setTemplates] = useState<PrizeTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<'create' | 'edit' | null>(null)
   const [form, setForm] = useState(blankForm)
@@ -53,10 +62,11 @@ export function Challenges() {
   async function load() {
     setLoading(true)
     try {
-      const [chRes, { data: ty }, { data: counts }] = await Promise.all([
+      const [chRes, { data: ty }, { data: counts }, { data: templateData }] = await Promise.all([
         adminDb('select', { table: 'challenges', columns: '*, challenge_types(name, display_name)', order: { column: 'sort_order', ascending: true } }),
         supabase.from('challenge_types').select('id, name, display_name'),
         supabase.from('challenge_participants').select('challenge_id'),
+        supabase.from('prize_pool_templates').select('id, name, description, is_active').eq('is_active', true).order('created_at'),
       ])
 
       const ch = chRes.data
@@ -75,8 +85,10 @@ export function Challenges() {
         rules: c.rules || [],
         cashback_tiers: c.cashback_tiers || [],
         video_url: c.video_url ?? null,
+        prize_pool_template_id: c.prize_pool_template_id ?? null,
       })))
       setTypes(ty || [])
+      setTemplates(templateData || [])
     } catch (e: any) {
       toast(e.message, 'error')
     } finally {
@@ -101,6 +113,7 @@ export function Challenges() {
       rules: Array.isArray(c.rules) ? c.rules.join('\n') : '',
       cashback_tiers: c.cashback_tiers ? JSON.stringify(c.cashback_tiers, null, 2) : '',
       video_url: c.video_url || '',
+      prize_pool_template_id: c.prize_pool_template_id || '',
     })
     setEditId(c.id)
     setModal('edit')
@@ -129,6 +142,7 @@ export function Challenges() {
         cashback_tiers: cashback,
         rules,
         video_url: form.video_url || null,
+        prize_pool_template_id: form.prize_pool_template_id || null,
         ...(form.challenge_type_id ? { challenge_type_id: form.challenge_type_id } : {}),
       }
 
@@ -136,7 +150,30 @@ export function Challenges() {
         await adminDb('update', { table: 'challenges', data: payload, filters: { id: editId } })
         toast('Challenge updated')
       } else {
-        await adminDb('insert', { table: 'challenges', data: payload })
+        const res = await adminDb('insert', { table: 'challenges', data: payload })
+        const newId = res.data?.[0]?.id
+
+        // If a template is selected, create the challenge_prize_pools row.
+        // Note: prize_pool_templates.prizes is [] in existing DB rows — pool is
+        // inserted empty here; PM should populate it separately via challenge_prize_pools.
+        if (newId && form.prize_pool_template_id) {
+          const { data: tpl } = await supabase
+            .from('prize_pool_templates')
+            .select('prizes')
+            .eq('id', form.prize_pool_template_id)
+            .single()
+          await adminDb('insert', {
+            table: 'challenge_prize_pools',
+            data: {
+              challenge_id: newId,
+              template_id: form.prize_pool_template_id,
+              pool: tpl?.prizes ?? [],
+              generation: 1,
+              is_active: true,
+            },
+          })
+        }
+
         toast('Challenge created')
       }
       setModal(null)
@@ -260,13 +297,22 @@ export function Challenges() {
                 </div>
               </div>
               {modal === 'create' && (
-                <div>
-                  <label className="label">Challenge Type *</label>
-                  <select className="input filter-select" style={{ width: '100%' }} value={form.challenge_type_id} onChange={e => f('challenge_type_id', e.target.value)}>
-                    <option value="">Select type</option>
-                    {types.map(t => <option key={t.id} value={t.id}>{t.display_name || t.name}</option>)}
-                  </select>
-                </div>
+                <>
+                  <div>
+                    <label className="label">Challenge Type *</label>
+                    <select className="input filter-select" style={{ width: '100%' }} value={form.challenge_type_id} onChange={e => f('challenge_type_id', e.target.value)}>
+                      <option value="">Select type</option>
+                      {types.map(t => <option key={t.id} value={t.id}>{t.display_name || t.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Prize Pool Template (optional)</label>
+                    <select className="input filter-select" style={{ width: '100%' }} value={form.prize_pool_template_id} onChange={e => f('prize_pool_template_id', e.target.value)}>
+                      <option value="">No template</option>
+                      {templates.map(t => <option key={t.id} value={t.id}>{t.name}{t.description ? ' — ' + t.description : ''}</option>)}
+                    </select>
+                  </div>
+                </>
               )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
