@@ -309,7 +309,7 @@ export function Challenges() {
                     <td style={{ color: 'var(--green)' }}>₹{c.prize_pool.toLocaleString('en-IN')}</td>
                     <td>
                       {c.has_pool && c.pool && c.pool.length > 0
-                        ? <span className="badge badge-verified" title={c.pool.map(p => `₹${p.toLocaleString('en-IN')}`).join(', ')}>✅ Linked</span>
+                        ? <span className="badge badge-verified" title={c.pool.map(p => `₹${p.toLocaleString('en-IN')}`).join(', ')}>₹{Math.min(...c.pool).toLocaleString('en-IN')} – ₹{Math.max(...c.pool).toLocaleString('en-IN')}</span>
                         : <span className="badge badge-pending">⚠️ No Pool</span>
                       }
                     </td>
