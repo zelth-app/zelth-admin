@@ -19,6 +19,8 @@ interface Challenge {
   total_slots: number
   challenge_type: string
   participant_count: number
+  rules: string[]
+  cashback_tiers: any[]
 }
 
 interface ChallengeType {
@@ -68,6 +70,8 @@ export function Challenges() {
         target_unit: c.target_unit, sort_order: c.sort_order, total_slots: c.total_slots,
         challenge_type: c.challenge_types?.display_name || c.challenge_types?.name || '—',
         participant_count: countMap[c.id] || 0,
+        rules: c.rules || [],
+        cashback_tiers: c.cashback_tiers || [],
       })))
       setTypes(ty || [])
     } catch (e: any) {
@@ -91,7 +95,8 @@ export function Challenges() {
       personal_window_days: String(c.personal_window_days),
       min_target: String(c.min_target), target_unit: c.target_unit,
       sort_order: String(c.sort_order), total_slots: String(c.total_slots),
-      rules: '', cashback_tiers: '',
+      rules: Array.isArray(c.rules) ? c.rules.join('\n') : '',
+      cashback_tiers: c.cashback_tiers ? JSON.stringify(c.cashback_tiers, null, 2) : '',
     })
     setEditId(c.id)
     setModal('edit')
