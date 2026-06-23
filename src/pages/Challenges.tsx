@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, adminDb } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { RefreshCw, Plus, Edit2, ToggleLeft, ToggleRight, Download, DollarSign } from 'lucide-react'
+import { RefreshCw, Plus, Edit2, ToggleLeft, ToggleRight, Download } from 'lucide-react'
 import { exportCsv } from '../lib/exportCsv'
 
 interface Challenge {
@@ -309,7 +309,7 @@ export function Challenges() {
                     <td style={{ color: 'var(--green)' }}>₹{c.prize_pool.toLocaleString('en-IN')}</td>
                     <td>
                       {c.has_pool && c.pool && c.pool.length > 0
-                        ? <span className="badge badge-verified" title={c.pool.join(', ')}>✅ ₹{Math.min(...c.pool).toLocaleString('en-IN')}–₹{Math.max(...c.pool).toLocaleString('en-IN')}</span>
+                        ? <span className="badge badge-verified" title={c.pool.map(p => `₹${p.toLocaleString('en-IN')}`).join(', ')}>✅ Linked</span>
                         : <span className="badge badge-pending">⚠️ No Pool</span>
                       }
                     </td>
@@ -331,7 +331,7 @@ export function Challenges() {
                         <button className="btn btn-ghost btn-sm" onClick={() => toggleActive(c)}>
                           {c.is_active ? <ToggleRight size={14} color="var(--green)" /> : <ToggleLeft size={14} />}
                         </button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => openPoolModal(c)} title="Set Pool"><DollarSign size={12} /></button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => openPoolModal(c)} title="Set Pool" style={{ fontSize: 12 }}>₹</button>
                       </div>
                     </td>
                   </tr>
