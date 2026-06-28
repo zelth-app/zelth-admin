@@ -515,7 +515,7 @@ export function Challenges() {
                 <label className="label">Rules (one per line)</label>
                 <textarea
                   className="input"
-                  rows={4}
+                  rows={5}
                   value={form.rules}
                   onChange={(e) => f("rules", e.target.value)}
                   placeholder="Complete your run using Strava&#10;Minimum 2km required"
@@ -535,7 +535,7 @@ export function Challenges() {
                 <label className="label">Prize Table (JSON)</label>
                 <textarea
                   className="input"
-                  rows={3}
+                  rows={6}
                   value={form.cashback_tiers}
                   onChange={(e) => f("cashback_tiers", e.target.value)}
                   style={{
