@@ -51,7 +51,7 @@ const blankForm = {
   total_slots: "500",
   rules: "",
   cashback_tiers:
-    '{"header_left": "DISTANCE", "header_right": "WINNINGS", "tiers": [{"label": "2 km", "prize": "₹15 - ₹1,500"}, {"label": "5 km", "prize": "₹50 - ₹1,500"}]}',
+    '{"header_left": "DISTANCE", "header_right": "WINNINGS", "footer": "★ Out of 500 particpants, 165 will get > ₹500", "tiers": [{"label": "2 km", "prize": "₹15 - ₹1,500"}, {"label": "5 km", "prize": "₹50 - ₹1,500"}]}',
   video_url: "",
 };
 
@@ -550,7 +550,7 @@ export function Challenges() {
                   Format: header_left, header_right, footer, tiers with label
                   and prize string. Example:{" "}
                   {
-                    '{"header_left":"DISTANCE","header_right":"WINNINGS","footer":"★ Out of 500 particpants, 165 will get > 500","tiers":[{"label":"2 km","prize":"₹100 - ₹1,500"}]}'
+                    '{"header_left":"DISTANCE","header_right":"WINNINGS","footer":"★ Out of 500 particpants, 165 will get > ₹500","tiers":[{"label":"2 km","prize":"₹100 - ₹1,500"}]}'
                   }
                 </div>
               </div>
