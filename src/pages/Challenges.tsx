@@ -547,10 +547,10 @@ export function Challenges() {
                 <div
                   style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}
                 >
-                  Format: header_left, header_right, tiers with label and prize
-                  string. Example:{" "}
+                  Format: header_left, header_right, footer, tiers with label
+                  and prize string. Example:{" "}
                   {
-                    '{"header_left":"DISTANCE","header_right":"WINNINGS","tiers":[{"label":"2 km","prize":"₹15 - ₹1,500"}]}'
+                    '{"header_left":"DISTANCE","header_right":"WINNINGS","footer":"★ Out of 500 particpants, 165 will get > 500","tiers":[{"label":"2 km","prize":"₹100 - ₹1,500"}]}'
                   }
                 </div>
               </div>
