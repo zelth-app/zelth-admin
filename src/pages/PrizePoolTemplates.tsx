@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase, adminDb } from '../lib/supabase'
+import { adminDb } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { exportCsv } from '../lib/exportCsv'
 import { RefreshCw, Download, Plus, Edit2 } from 'lucide-react'
@@ -28,8 +28,11 @@ export function PrizePoolTemplates() {
   async function load() {
     setLoading(true)
     try {
-      const { data, error } = await supabase.from('prize_pool_templates').select('*').order('created_at')
-      if (error) throw error
+      const { data } = await adminDb('select', {
+        table: 'prize_pool_templates',
+        columns: '*',
+        order: { column: 'created_at', ascending: true },
+      })
       setRows(data || [])
     } catch (e: any) { toast(e.message, 'error') }
     finally { setLoading(false) }

@@ -35,17 +35,15 @@ export function Dashboard() {
   async function load() {
     try {
       const [
-        { count: users },
+        usersRes,
         { count: challenges },
         { count: submissions },
         { count: pending_submissions },
         { count: withdrawals },
         { data: walletData },
         { data: recentSubsData },
-        { count: active_subscribers },
-        { count: pending_coach },
       ] = await Promise.all([
-        supabase.from("users").select("*", { count: "exact", head: true }),
+        adminDb("select", { table: "users", columns: "id" }),
         supabase
           .from("challenges")
           .select("*", { count: "exact", head: true })
@@ -69,16 +67,22 @@ export function Dashboard() {
           )
           .order("submitted_at", { ascending: false })
           .limit(5),
-        supabase
-          .from("users")
-          .select("*", { count: "exact", head: true })
-          .gt("subscription_end", new Date().toISOString()),
-        supabase
-          .from("users")
-          .select("*", { count: "exact", head: true })
-          .gt("subscription_end", new Date().toISOString())
-          .eq("coach_active", false),
       ]);
+
+      const activeSubsRes = await adminDb("select", {
+        table: "users",
+        columns: "id",
+        gte: { subscription_end: new Date().toISOString() },
+      });
+      const active_subscribers = activeSubsRes.data?.length || 0;
+
+      const pendingCoachRes = await adminDb("select", {
+        table: "users",
+        columns: "id",
+        gte: { subscription_end: new Date().toISOString() },
+        filters: { coach_active: false },
+      });
+      const pending_coach = pendingCoachRes.data?.length || 0;
 
       const totalWallet = (walletData || []).reduce(
         (sum: number, w: any) => sum + Number(w.balance),
@@ -118,7 +122,7 @@ export function Dashboard() {
       }
 
       setStats({
-        users: users || 0,
+        users: usersRes.data?.length || 0,
         challenges: challenges || 0,
         submissions: submissions || 0,
         pending_submissions: pending_submissions || 0,

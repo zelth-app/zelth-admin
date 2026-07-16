@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase, adminDb, callEdge, SERVICE_SECRET } from '../lib/supabase'
+import { adminDb, callEdge, SERVICE_SECRET } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { ExternalLink, Check, X, RefreshCw, Download } from 'lucide-react'
 import { exportCsv } from '../lib/exportCsv'
@@ -51,24 +51,22 @@ export function Submissions() {
   async function load() {
     setLoading(true)
     try {
-      let q = supabase
-        .from('activity_submissions')
-        .select(`
+      const res = await adminDb('select', {
+        table: 'activity_submissions',
+        columns: `
           id, status, strava_url, rejection_reason, submitted_at, verified_at, metric_achieved,
           users!inner(id, name, phone, wallet(id, balance)),
           challenge_participants!inner(
             id, challenge_id,
             challenges!inner(id, title, entry_fee)
           )
-        `)
-        .order('submitted_at', { ascending: false })
+        `,
+        order: { column: 'submitted_at', ascending: false },
+        ...(statusFilter !== 'all' ? { filters: { status: statusFilter } } : {}),
+      })
 
-      if (statusFilter !== 'all') {
-        q = q.eq('status', statusFilter)
-      }
-
-      const { data, error } = await q
-      if (error) throw error
+      if (res.error) throw new Error(res.error)
+      const data = res.data || []
 
       const mapped = (data || []).map((row: any) => ({
         submission_id: row.id,

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import Papa from 'papaparse'
-import { supabase, callEdgeWithSecret } from '../lib/supabase'
+import { adminDb, callEdgeWithSecret } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { exportCsv } from '../lib/exportCsv'
 import { Send, Users, Upload, Download } from 'lucide-react'
@@ -41,11 +41,12 @@ export function Notify() {
         }
 
         try {
-          const { data: user } = await supabase
-            .from('users')
-            .select('id')
-            .eq('phone', row.phone.replace(/\D/g, '').slice(-10))
-            .single()
+          const uRes = await adminDb('select', {
+            table: 'users',
+            columns: 'id',
+            filters: { phone: row.phone.replace(/\D/g, '').slice(-10) },
+          })
+          const user = uRes.data?.[0]
 
           if (!user) throw new Error('User not found')
 
@@ -77,7 +78,8 @@ export function Notify() {
     try {
       if (target === 'single') {
         if (!phone) { toast('Enter phone number', 'error'); setSending(false); return }
-        const { data: user } = await supabase.from('users').select('id').eq('phone', phone).single()
+        const uRes = await adminDb('select', { table: 'users', columns: 'id', filters: { phone } })
+        const user = uRes.data?.[0]
         if (!user) { toast('User not found', 'error'); setSending(false); return }
         await callEdgeWithSecret('send-notification', {
           user_id: user.id,
@@ -87,7 +89,7 @@ export function Notify() {
         toast('Notification sent!')
         setLogs(prev => [{ time: new Date().toLocaleTimeString(), target: phone, title, status: 'sent' }, ...prev])
       } else {
-        const { data: tokens } = await supabase.from('user_fcm_tokens').select('user_id')
+        const { data: tokens } = await adminDb('select', { table: 'user_fcm_tokens', columns: 'user_id' })
         const userIds = (tokens || []).map((t: any) => t.user_id)
         let success = 0, fail = 0
         for (const userId of userIds) {

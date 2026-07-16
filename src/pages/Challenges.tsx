@@ -78,7 +78,7 @@ export function Challenges() {
           order: { column: "sort_order", ascending: true },
         }),
         supabase.from("challenge_types").select("id, name, display_name"),
-        supabase.from("challenge_participants").select("challenge_id"),
+        adminDb("select", { table: "challenge_participants", columns: "challenge_id" }),
       ]);
 
       const ch = chRes.data;
