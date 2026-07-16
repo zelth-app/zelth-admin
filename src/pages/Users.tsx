@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { adminDb } from "../lib/supabase";
 import { toast } from "../components/Toast";
 import { RefreshCw, Search, Download } from "lucide-react";
 import { exportCsv } from "../lib/exportCsv";
@@ -49,20 +49,19 @@ export function Users() {
   async function load() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select(
-          `id, phone, name, age, city, gender, language, upi_id, created_at, subscription_end, trial_used, coach_active, fitness_goals, height_cm, weight_kg, wallet(balance, total_earned, total_withdrawn)`,
-        )
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
+      const { data } = await adminDb("select", {
+        table: "users",
+        columns:
+          "id, phone, name, age, city, gender, language, upi_id, created_at, subscription_end, trial_used, coach_active, fitness_goals, height_cm, weight_kg, wallet(balance, total_earned, total_withdrawn)",
+        order: { column: "created_at", ascending: false },
+      });
 
       const userIds = (data || []).map((u: any) => u.id);
-      const { data: joinData } = await supabase
-        .from("challenge_participants")
-        .select("user_id")
-        .in("user_id", userIds);
+      const { data: joinData } = await adminDb("select", {
+        table: "challenge_participants",
+        columns: "user_id",
+        in: { column: "user_id", values: userIds },
+      });
 
       const joinMap: Record<string, number> = {};
       for (const j of joinData || []) {
