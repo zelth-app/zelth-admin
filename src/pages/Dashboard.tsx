@@ -34,40 +34,15 @@ export function Dashboard() {
 
   async function load() {
     try {
-      const [
-        usersRes,
-        { count: challenges },
-        { count: submissions },
-        { count: pending_submissions },
-        { count: withdrawals },
-        { data: walletData },
-        { data: recentSubsData },
-      ] = await Promise.all([
-        adminDb("select", { table: "users", columns: "id" }),
-        supabase
-          .from("challenges")
-          .select("*", { count: "exact", head: true })
-          .eq("is_active", true),
-        supabase
-          .from("activity_submissions")
-          .select("*", { count: "exact", head: true }),
-        supabase
-          .from("activity_submissions")
-          .select("*", { count: "exact", head: true })
-          .eq("status", "submitted"),
-        supabase
-          .from("withdrawal_requests")
-          .select("*", { count: "exact", head: true })
-          .eq("status", "pending"),
-        supabase.from("wallet").select("balance, total_earned"),
-        supabase
-          .from("activity_submissions")
-          .select(
-            "id, status, submitted_at, users(name, phone), challenges(title)",
-          )
-          .order("submitted_at", { ascending: false })
-          .limit(5),
-      ]);
+      const [usersRes, { count: challenges }, { data: walletData }] =
+        await Promise.all([
+          adminDb("select", { table: "users", columns: "id" }),
+          supabase
+            .from("challenges")
+            .select("*", { count: "exact", head: true })
+            .eq("is_active", true),
+          supabase.from("wallet").select("balance, total_earned"),
+        ]);
 
       const activeSubsRes = await adminDb("select", {
         table: "users",
@@ -83,6 +58,35 @@ export function Dashboard() {
         filters: { coach_active: false },
       });
       const pending_coach = pendingCoachRes.data?.length || 0;
+
+      const submissionsRes = await adminDb("select", {
+        table: "activity_submissions",
+        columns: "id",
+      });
+      const submissions = submissionsRes.data?.length || 0;
+
+      const pendingSubsRes = await adminDb("select", {
+        table: "activity_submissions",
+        columns: "id",
+        filters: { status: "submitted" },
+      });
+      const pending_submissions = pendingSubsRes.data?.length || 0;
+
+      const recentSubsRes = await adminDb("select", {
+        table: "activity_submissions",
+        columns:
+          "id, status, submitted_at, users(name, phone), challenge_participants(challenges(title))",
+        order: { column: "submitted_at", ascending: false },
+        limit: 5,
+      });
+      const recentSubsData = recentSubsRes.data;
+
+      const withdrawalsRes = await adminDb("select", {
+        table: "withdrawal_requests",
+        columns: "id",
+        filters: { status: "pending" },
+      });
+      const withdrawals = withdrawalsRes.data?.length || 0;
 
       const totalWallet = (walletData || []).reduce(
         (sum: number, w: any) => sum + Number(w.balance),
@@ -308,7 +312,10 @@ export function Dashboard() {
                         {(s.users as any)?.phone}
                       </div>
                     </td>
-                    <td>{(s.challenges as any)?.title || "—"}</td>
+                    <td>
+                      {(s.challenge_participants as any)?.challenges?.title ||
+                        "—"}
+                    </td>
                     <td>
                       <span className={`badge badge-${s.status}`}>
                         {s.status}
