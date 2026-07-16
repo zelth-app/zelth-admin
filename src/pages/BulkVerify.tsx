@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import Papa from "papaparse";
-import { supabase, callEdge, callEdgeWithSecret, SERVICE_SECRET, adminDb } from "../lib/supabase";
+import { callEdge, SERVICE_SECRET, adminDb } from "../lib/supabase";
 import { toast } from "../components/Toast";
 import { exportCsv } from "../lib/exportCsv";
 import {
@@ -51,22 +51,15 @@ export function BulkVerify() {
   async function loadPendingSubmissions() {
     setLoadingPending(true);
     try {
-      const { data, error } = await supabase
-        .from("activity_submissions")
-        .select(
-          `
-          id, strava_url, submitted_at,
-          users!inner(id, name, phone),
-          challenge_participants!inner(id, challenge_id, attempt_number),
-          challenges!inner(title, entry_fee)
-        `,
-        )
-        .eq("status", "submitted")
-        .order("submitted_at", { ascending: true });
+      const { data } = await adminDb("select", {
+        table: "activity_submissions",
+        columns:
+          "id, strava_url, submitted_at, users!inner(id, name, phone), challenge_participants!inner(id, challenge_id, attempt_number, challenges!inner(title, entry_fee))",
+        filters: { status: "submitted" },
+        order: { column: "submitted_at", ascending: true },
+      });
 
-      if (error) throw error;
-
-      const subs = data || [];
+      const subs: any[] = data || [];
 
       const userIds = [
         ...new Set(subs.map((s: any) => s.users?.id).filter(Boolean)),
@@ -85,11 +78,12 @@ export function BulkVerify() {
       > = {};
 
       if (userIds.length > 0) {
-        const { data: rewards } = await supabase
-          .from("rewards")
-          .select("user_id, win_code, reward_type, amount, created_at")
-          .in("user_id", userIds)
-          .order("created_at", { ascending: true });
+        const { data: rewards } = await adminDb("select", {
+          table: "rewards",
+          columns: "user_id, win_code, reward_type, amount, created_at",
+          in: { column: "user_id", values: userIds },
+          order: { column: "created_at", ascending: true },
+        });
 
         for (const userId of userIds) {
           const userRewards = (rewards || []).filter(
@@ -164,9 +158,9 @@ export function BulkVerify() {
     const csvRows = filteredPendingSubs.map((s: any) => ({
       ref_user_name: s.users?.name,
       ref_phone: s.users?.phone,
-      ref_challenge: s.challenges?.title,
+      ref_challenge: s.challenge_participants?.challenges?.title,
       ref_attempt_number: s.challenge_participants?.attempt_number || 1,
-      ref_entry_fee: s.challenges?.entry_fee,
+      ref_entry_fee: s.challenge_participants?.challenges?.entry_fee,
       ref_strava_url: s.strava_url,
       ref_submitted_at: s.submitted_at,
       ref_win_streak: s._win?.win_streak || "—",
@@ -206,9 +200,9 @@ export function BulkVerify() {
       header: true,
       skipEmptyLines: true,
       beforeFirstChunk: (chunk) => {
-        const lines = chunk.split('\n')
-        lines.splice(0, 1) // remove instructions row
-        return lines.join('\n')
+        const lines = chunk.split("\n");
+        lines.splice(0, 1); // remove instructions row
+        return lines.join("\n");
       },
       complete: (result) => {
         setRows(result.data);
@@ -240,15 +234,16 @@ export function BulkVerify() {
     }
 
     const submissionIds = rows.map((r) => r.submission_id).filter(Boolean);
-    const { data: existingVerified } = await supabase
-      .from("activity_submissions")
-      .select("id, status")
-      .in("id", submissionIds)
-      .eq("status", "verified");
+    const existingVerifiedRes = await adminDb("select", {
+      table: "activity_submissions",
+      columns: "id, status",
+      in: { column: "id", values: submissionIds },
+      filters: { status: "verified" },
+    });
 
-    if (existingVerified && existingVerified.length > 0) {
+    if (existingVerifiedRes.data && existingVerifiedRes.data.length > 0) {
       const confirm = window.confirm(
-        `⚠️ ${existingVerified.length} submissions are already verified — crediting again may cause duplicates. Continue?`,
+        `⚠️ ${existingVerifiedRes.data.length} submissions are already verified — crediting again may cause duplicates. Continue?`,
       );
       if (!confirm) {
         setProcessing(false);
@@ -275,7 +270,11 @@ export function BulkVerify() {
         if (row.action === "verify") {
           await adminDb("update", {
             table: "activity_submissions",
-            data: { ...baseUpdate, status: "verified", verified_at: new Date().toISOString() },
+            data: {
+              ...baseUpdate,
+              status: "verified",
+              verified_at: new Date().toISOString(),
+            },
             filters: { id: row.submission_id },
           });
 
@@ -305,7 +304,11 @@ export function BulkVerify() {
             throw new Error("rejection_reason required for reject action");
           await adminDb("update", {
             table: "activity_submissions",
-            data: { ...baseUpdate, status: "rejected", rejection_reason: row.rejection_reason },
+            data: {
+              ...baseUpdate,
+              status: "rejected",
+              rejection_reason: row.rejection_reason,
+            },
             filters: { id: row.submission_id },
           });
           res[i] = { row, status: "success", message: `✓ Rejected` };
@@ -461,8 +464,20 @@ export function BulkVerify() {
                         {s.users?.phone}
                       </div>
                     </td>
-                    <td>{s.challenges?.title}</td>
-                    <td style={{ textAlign: 'center', color: s.challenge_participants?.attempt_number > 1 ? 'var(--orange)' : 'var(--text3)', fontWeight: s.challenge_participants?.attempt_number > 1 ? 600 : 400 }}>
+                    <td>{s.challenge_participants?.challenges?.title}</td>
+                    <td
+                      style={{
+                        textAlign: "center",
+                        color:
+                          s.challenge_participants?.attempt_number > 1
+                            ? "var(--orange)"
+                            : "var(--text3)",
+                        fontWeight:
+                          s.challenge_participants?.attempt_number > 1
+                            ? 600
+                            : 400,
+                      }}
+                    >
                       #{s.challenge_participants?.attempt_number || 1}
                     </td>
                     <td>
