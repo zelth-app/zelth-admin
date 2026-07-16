@@ -55,10 +55,11 @@ export function Submissions() {
         .from('activity_submissions')
         .select(`
           id, status, strava_url, rejection_reason, submitted_at, verified_at, metric_achieved,
-          users!inner(id, name, phone),
-          challenge_participants!inner(id, challenge_id),
-          challenges!inner(id, title, entry_fee),
-          wallet:users!inner(wallet(id, balance))
+          users!inner(id, name, phone, wallet(id, balance)),
+          challenge_participants!inner(
+            id, challenge_id,
+            challenges!inner(id, title, entry_fee)
+          )
         `)
         .order('submitted_at', { ascending: false })
 
@@ -78,8 +79,8 @@ export function Submissions() {
         verified_at: row.verified_at,
         user_name: row.users?.name || '—',
         phone: row.users?.phone || '—',
-        challenge_title: row.challenges?.title || '—',
-        entry_fee: Number(row.challenges?.entry_fee || 0),
+        challenge_title: row.challenge_participants?.challenges?.title || '—',
+        entry_fee: Number(row.challenge_participants?.challenges?.entry_fee || 0),
         participant_id: row.challenge_participants?.id,
         challenge_id: row.challenge_participants?.challenge_id,
         user_id: row.users?.id,
