@@ -12,6 +12,7 @@ interface Withdrawal {
   requested_at: string;
   processed_at: string | null;
   failure_reason: string | null;
+  cashfree_transfer_id: string | null;
   wallet_transaction_id: string | null;
   user_name: string;
   phone: string;
@@ -35,6 +36,11 @@ export function Withdrawals() {
     wallet_id: string;
     txn_id: string | null;
   } | null>(null);
+  const [approveModal, setApproveModal] = useState<{
+    id: string;
+    amount: number;
+  } | null>(null);
+  const [transferId, setTransferId] = useState("");
 
   useEffect(() => {
     load();
@@ -45,7 +51,7 @@ export function Withdrawals() {
     try {
       const res = await adminDb("select", {
         table: "withdrawal_requests",
-        columns: `id, amount, upi_id, status, requested_at, processed_at, failure_reason, wallet_transaction_id, users!inner(id, name, phone, wallet(id, balance))`,
+        columns: `id, amount, upi_id, status, requested_at, processed_at, failure_reason, cashfree_transfer_id, wallet_transaction_id, users!inner(id, name, phone, wallet(id, balance))`,
         order: { column: "requested_at", ascending: false },
         ...(statusFilter !== "all"
           ? { filters: { status: statusFilter } }
@@ -62,6 +68,7 @@ export function Withdrawals() {
           requested_at: r.requested_at,
           processed_at: r.processed_at,
           failure_reason: r.failure_reason,
+          cashfree_transfer_id: r.cashfree_transfer_id ?? null,
           wallet_transaction_id: r.wallet_transaction_id,
           user_name: r.users?.name || "—",
           phone: r.users?.phone || "—",
@@ -77,8 +84,10 @@ export function Withdrawals() {
     }
   }
 
-  async function handleApprove(row: Withdrawal) {
-    setSaving(row.id);
+  async function handleApprove(id: string, amount: number) {
+    const row = rows.find((r) => r.id === id);
+    if (!row) return;
+    setSaving(id);
     try {
       await adminDb("update", {
         table: "withdrawal_requests",
@@ -86,8 +95,9 @@ export function Withdrawals() {
           status: "completed",
           processed_at: new Date().toISOString(),
           processed_by: "admin",
+          cashfree_transfer_id: transferId || null,
         },
-        filters: { id: row.id },
+        filters: { id },
       });
 
       if (row.wallet_transaction_id) {
@@ -107,14 +117,15 @@ export function Withdrawals() {
         await adminDb("update", {
           table: "wallet",
           data: {
-            total_withdrawn: Number(wData.total_withdrawn) + row.amount,
+            total_withdrawn: Number(wData.total_withdrawn) + amount,
             updated_at: new Date().toISOString(),
           },
           filters: { id: row.wallet_id },
         });
       }
 
-      toast(`✅ Withdrawal approved — ₹${row.amount} to ${row.upi_id}`);
+      toast(`✅ Withdrawal approved — ₹${amount} to ${row.upi_id}`);
+      setApproveModal(null);
       load();
     } catch (e: any) {
       toast(e.message, "error");
@@ -313,6 +324,17 @@ export function Withdrawals() {
                           {row.failure_reason}
                         </div>
                       )}
+                      <div
+                        style={{
+                          fontSize: 9,
+                          color: "rgba(255,255,255,0.35)",
+                          marginTop: 2,
+                        }}
+                      >
+                        {row.cashfree_transfer_id
+                          ? "Ref: " + row.cashfree_transfer_id
+                          : ""}
+                      </div>
                     </td>
                     <td style={{ color: "var(--text2)", fontSize: 12 }}>
                       {new Date(row.requested_at).toLocaleString("en-IN")}
@@ -326,7 +348,13 @@ export function Withdrawals() {
                           <button
                             className="btn btn-success btn-sm"
                             disabled={saving === row.id}
-                            onClick={() => handleApprove(row)}
+                            onClick={() => {
+                              setApproveModal({
+                                id: row.id,
+                                amount: row.amount,
+                              });
+                              setTransferId("");
+                            }}
                           >
                             <Check size={12} /> Approve
                           </button>
@@ -399,6 +427,64 @@ export function Withdrawals() {
                 disabled={!!saving}
               >
                 {saving ? "Processing..." : "Reject & Refund"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {approveModal && (
+        <div className="modal-overlay" onClick={() => setApproveModal(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">Confirm Withdrawal Completion</div>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                color: "var(--orange)",
+                marginBottom: 16,
+              }}
+            >
+              ₹{approveModal.amount}
+            </div>
+            <div>
+              <label className="label">Transfer ID</label>
+              <input
+                className="input"
+                placeholder="Cashfree / UPI Transfer ID (optional)"
+                value={transferId}
+                onChange={(e) => setTransferId(e.target.value)}
+                autoFocus
+              />
+              <div
+                style={{
+                  fontSize: 9,
+                  color: "rgba(255,255,255,0.4)",
+                  marginTop: 4,
+                }}
+              >
+                Enter the transfer reference for your records
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button
+                className="btn btn-ghost"
+                style={{ flex: 1 }}
+                onClick={() => setApproveModal(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 2 }}
+                disabled={saving === approveModal.id}
+                onClick={() =>
+                  handleApprove(approveModal.id, approveModal.amount)
+                }
+              >
+                {saving === approveModal.id
+                  ? "Processing..."
+                  : "Mark Completed ✓"}
               </button>
             </div>
           </div>
