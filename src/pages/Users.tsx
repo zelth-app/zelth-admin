@@ -57,15 +57,25 @@ export function Users() {
       });
 
       const userIds = (data || []).map((u: any) => u.id);
-      const { data: joinData } = await adminDb("select", {
-        table: "challenge_participants",
-        columns: "user_id",
-        in: { column: "user_id", values: userIds },
-      });
+      const chunks: string[][] = [];
+      for (let i = 0; i < userIds.length; i += 50) {
+        chunks.push(userIds.slice(i, i + 50));
+      }
+      const joinResults = await Promise.all(
+        chunks.map((chunk) =>
+          adminDb("select", {
+            table: "challenge_participants",
+            columns: "user_id",
+            in: { column: "user_id", values: chunk },
+          }),
+        ),
+      );
 
       const joinMap: Record<string, number> = {};
-      for (const j of joinData || []) {
-        joinMap[j.user_id] = (joinMap[j.user_id] || 0) + 1;
+      for (const { data: joinData } of joinResults) {
+        for (const j of joinData || []) {
+          joinMap[j.user_id] = (joinMap[j.user_id] || 0) + 1;
+        }
       }
 
       setRows(
