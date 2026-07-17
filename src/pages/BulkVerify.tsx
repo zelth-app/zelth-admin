@@ -78,12 +78,21 @@ export function BulkVerify() {
       > = {};
 
       if (userIds.length > 0) {
-        const { data: rewards } = await adminDb("select", {
-          table: "rewards",
-          columns: "user_id, win_code, reward_type, amount, created_at",
-          in: { column: "user_id", values: userIds },
-          order: { column: "created_at", ascending: true },
-        });
+        const chunks: string[][] = [];
+        for (let i = 0; i < userIds.length; i += 50) {
+          chunks.push(userIds.slice(i, i + 50));
+        }
+        const rewardResults = await Promise.all(
+          chunks.map((chunk) =>
+            adminDb("select", {
+              table: "rewards",
+              columns: "user_id, win_code, reward_type, amount, created_at",
+              in: { column: "user_id", values: chunk },
+              order: { column: "created_at", ascending: true },
+            }),
+          ),
+        );
+        const rewards = rewardResults.flatMap((r) => r.data || []);
 
         for (const userId of userIds) {
           const userRewards = (rewards || []).filter(
@@ -234,16 +243,25 @@ export function BulkVerify() {
     }
 
     const submissionIds = rows.map((r) => r.submission_id).filter(Boolean);
-    const existingVerifiedRes = await adminDb("select", {
-      table: "activity_submissions",
-      columns: "id, status",
-      in: { column: "id", values: submissionIds },
-      filters: { status: "verified" },
-    });
+    const idChunks: string[][] = [];
+    for (let i = 0; i < submissionIds.length; i += 50) {
+      idChunks.push(submissionIds.slice(i, i + 50));
+    }
+    const verifiedResults = await Promise.all(
+      idChunks.map((chunk) =>
+        adminDb("select", {
+          table: "activity_submissions",
+          columns: "id, status",
+          in: { column: "id", values: chunk },
+          filters: { status: "verified" },
+        }),
+      ),
+    );
+    const existingVerified = verifiedResults.flatMap((r) => r.data || []);
 
-    if (existingVerifiedRes.data && existingVerifiedRes.data.length > 0) {
+    if (existingVerified.length > 0) {
       const confirm = window.confirm(
-        `⚠️ ${existingVerifiedRes.data.length} submissions are already verified — crediting again may cause duplicates. Continue?`,
+        `⚠️ ${existingVerified.length} submissions are already verified — crediting again may cause duplicates. Continue?`,
       );
       if (!confirm) {
         setProcessing(false);
