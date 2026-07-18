@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase, adminDb } from "../lib/supabase";
+import { adminDb } from "../lib/supabase";
 import { toast } from "../components/Toast";
 import { RefreshCw, Check, X, Download } from "lucide-react";
 import { exportCsv } from "../lib/exportCsv";
@@ -108,21 +108,22 @@ export function Withdrawals() {
         });
       }
 
-      const { data: wData } = await supabase
-        .from("wallet")
-        .select("total_withdrawn")
-        .eq("id", row.wallet_id)
-        .single();
-      if (wData) {
-        await adminDb("update", {
-          table: "wallet",
-          data: {
-            total_withdrawn: Number(wData.total_withdrawn) + amount,
-            updated_at: new Date().toISOString(),
-          },
-          filters: { id: row.wallet_id },
-        });
-      }
+      const wRes = await adminDb("select", {
+        table: "wallet",
+        columns: "total_withdrawn",
+        filters: { id: row.wallet_id },
+      });
+      const wData = wRes.data?.[0];
+      if (!wData)
+        throw new Error("Could not load wallet to update total withdrawn");
+      await adminDb("update", {
+        table: "wallet",
+        data: {
+          total_withdrawn: Number(wData.total_withdrawn) + amount,
+          updated_at: new Date().toISOString(),
+        },
+        filters: { id: row.wallet_id },
+      });
 
       toast(`✅ Withdrawal approved — ₹${amount} to ${row.upi_id}`);
       setApproveModal(null);
@@ -157,21 +158,21 @@ export function Withdrawals() {
         });
       }
 
-      const { data: wData } = await supabase
-        .from("wallet")
-        .select("balance")
-        .eq("id", rejectModal.wallet_id)
-        .single();
-      if (wData) {
-        await adminDb("update", {
-          table: "wallet",
-          data: {
-            balance: Number(wData.balance) + rejectModal.amount,
-            updated_at: new Date().toISOString(),
-          },
-          filters: { id: rejectModal.wallet_id },
-        });
-      }
+      const wRes = await adminDb("select", {
+        table: "wallet",
+        columns: "balance",
+        filters: { id: rejectModal.wallet_id },
+      });
+      const wData = wRes.data?.[0];
+      if (!wData) throw new Error("Could not load wallet to refund balance");
+      await adminDb("update", {
+        table: "wallet",
+        data: {
+          balance: Number(wData.balance) + rejectModal.amount,
+          updated_at: new Date().toISOString(),
+        },
+        filters: { id: rejectModal.wallet_id },
+      });
 
       toast("Withdrawal rejected — amount refunded to wallet");
       setRejectModal(null);
