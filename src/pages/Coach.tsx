@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import Papa from "papaparse";
 import { adminDb } from "../lib/supabase";
 import { toast } from "../components/Toast";
@@ -29,6 +29,31 @@ const COACH_ACTIVATE_TEMPLATE = `INSTRUCTIONS,READ ONLY columns (do not edit ref
 ref_user_id,ref_name,ref_phone,ref_goal,ref_height_cm,ref_weight_kg,ref_subscribed_on,user_id,coach_dashboard_url
 example-user-uuid,John Doe,9876543210,Build Muscle,175,75,2026-01-01,example-user-uuid,https://app.example.com/coach/john`;
 
+const REVIEW_SECTION_LABEL: React.CSSProperties = {
+  color: "var(--text3)",
+  fontSize: 11,
+  fontWeight: 600,
+  letterSpacing: "0.8px",
+  textTransform: "uppercase",
+  marginBottom: 8,
+};
+
+// Onboarding fields are rendered generically so a new question shows up here
+// without a code change — keys arrive as snake_case or camelCase.
+function formatFieldLabel(key: string) {
+  return key
+    .replace(/_/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatFieldValue(value: unknown) {
+  if (Array.isArray(value)) return value.join(", ");
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 interface PendingUser {
   id: string;
   name: string | null;
@@ -48,6 +73,25 @@ interface ActiveCoachUser {
   fitness_goals: string[] | null;
   coach_dashboard_url: string | null;
   subscription_end: string | null;
+}
+
+interface OnboardingSubmission {
+  id: string;
+  user_id: string;
+  raw_answers: Record<string, unknown>;
+  audio_urls: Record<string, string>;
+  transcripts: Record<string, string>;
+  processed_data: Record<string, unknown> | null;
+  admin_edited_data: Record<string, unknown> | null;
+  status:
+    | "submitted"
+    | "transcribing"
+    | "transcribed"
+    | "processing"
+    | "processed"
+    | "approved"
+    | "failed";
+  error_message: string | null;
 }
 
 interface CoachCsvRow {
@@ -85,6 +129,14 @@ export function Coach() {
   );
   const [activeCollapsed, setActiveCollapsed] = useState(false);
 
+  // Onboarding review state
+  const [submissions, setSubmissions] = useState<OnboardingSubmission[]>([]);
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [editedJson, setEditedJson] = useState<Record<string, string>>({});
+  const [jsonError, setJsonError] = useState<Record<string, string>>({});
+  const [approving, setApproving] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
+
   // CSV bulk activation state
   const [csvRows, setCsvRows] = useState<CoachCsvRow[]>([]);
   const [csvResults, setCsvResults] = useState<CoachResult[]>([]);
@@ -95,6 +147,7 @@ export function Coach() {
   useEffect(() => {
     loadPending();
     loadActive();
+    loadSubmissions();
   }, []);
 
   async function loadPending() {
@@ -134,14 +187,37 @@ export function Coach() {
     }
   }
 
+  // No filter needed — approved submissions belong to users who are no longer
+  // pending, so they never match a row in this table.
+  async function loadSubmissions() {
+    try {
+      const { data } = await adminDb("select", {
+        table: "coach_onboarding_submissions",
+        columns:
+          "id, user_id, raw_answers, audio_urls, transcripts, processed_data, admin_edited_data, status, error_message",
+      });
+      setSubmissions(data || []);
+    } catch (e: any) {
+      toast(e.message, "error");
+    }
+  }
+
   function refresh() {
     loadPending();
     loadActive();
+    loadSubmissions();
   }
 
   function getGoalLabel(goals: string[] | null) {
     if (!goals || goals.length === 0) return "—";
     return FITNESS_GOAL_LABELS[goals[0]] || goals[0];
+  }
+
+  const submissionForUser = (userId: string) =>
+    submissions.find((s) => s.user_id === userId);
+
+  function toggleExpanded(userId: string) {
+    setExpandedIds((prev) => ({ ...prev, [userId]: !prev[userId] }));
   }
 
   // ── Inline single-row activation ──────────────────────────────────────────
@@ -174,6 +250,98 @@ export function Coach() {
       toast(e.message, "error");
     } finally {
       setActivating(null);
+    }
+  }
+
+  // ── Onboarding review actions ─────────────────────────────────────────────
+
+  function submissionJson(submission: OnboardingSubmission) {
+    return JSON.stringify(
+      submission.admin_edited_data ?? submission.processed_data,
+      null,
+      2,
+    );
+  }
+
+  async function handleApproveAndActivate(
+    user: PendingUser,
+    submission: OnboardingSubmission,
+  ) {
+    const raw = editedJson[submission.id] ?? submissionJson(submission);
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      setJsonError({
+        ...jsonError,
+        [submission.id]: "Invalid JSON — fix before approving",
+      });
+      return;
+    }
+
+    const url = (dashboardUrls[user.id] || "").trim();
+    if (!url) {
+      toast("Dashboard URL is required", "error");
+      return;
+    }
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      toast("URL must start with http:// or https://", "error");
+      return;
+    }
+
+    setApproving(submission.id);
+    try {
+      await adminDb("update", {
+        table: "coach_onboarding_submissions",
+        data: {
+          admin_edited_data: parsed,
+          status: "approved",
+          // approved_by stays null — it's a uuid FK to users(id) and this panel
+          // has no per-admin identity to attribute the approval to.
+          approved_at: new Date().toISOString(),
+        },
+        filters: { id: submission.id },
+      });
+      await adminDb("update", {
+        table: "users",
+        data: { coach_active: true, coach_dashboard_url: url },
+        filters: { id: user.id },
+      });
+      toast(`Coach activated for ${user.name || user.phone}`);
+      setEditedJson((prev) => {
+        const n = { ...prev };
+        delete n[submission.id];
+        return n;
+      });
+      setJsonError((prev) => {
+        const n = { ...prev };
+        delete n[submission.id];
+        return n;
+      });
+      setDashboardUrls((prev) => {
+        const n = { ...prev };
+        delete n[user.id];
+        return n;
+      });
+      refresh();
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setApproving(null);
+    }
+  }
+
+  async function handleRetryProcessing(submission: OnboardingSubmission) {
+    setRetrying(submission.id);
+    try {
+      await adminDb("retry_coach_processing", { submission_id: submission.id });
+      toast("Reprocessing started — check back shortly");
+      refresh();
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setRetrying(null);
     }
   }
 
@@ -435,64 +603,304 @@ export function Coach() {
                 </tr>
               </thead>
               <tbody>
-                {pending.map((user) => (
-                  <tr key={user.id}>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>
-                        {user.name || (
-                          <span style={{ color: "var(--text3)" }}>—</span>
+                {pending.map((user) => {
+                  const submission = submissionForUser(user.id);
+                  const status = submission?.status;
+                  // "transcribed" is an intermediate state before the
+                  // processing stage — nothing to review yet either way.
+                  const isProcessing =
+                    status === "submitted" ||
+                    status === "transcribing" ||
+                    status === "transcribed" ||
+                    status === "processing";
+                  const expanded = !!expandedIds[user.id];
+
+                  const urlInput = (
+                    <input
+                      className="input"
+                      style={{ fontSize: 12 }}
+                      placeholder="https://coach.example.com/dashboard/..."
+                      value={dashboardUrls[user.id] || ""}
+                      onChange={(e) =>
+                        setDashboardUrls((prev) => ({
+                          ...prev,
+                          [user.id]: e.target.value,
+                        }))
+                      }
+                    />
+                  );
+
+                  const activateButton = (
+                    <button
+                      className="btn btn-success btn-sm"
+                      disabled={activating === user.id}
+                      onClick={() => handleActivate(user)}
+                    >
+                      {activating === user.id ? "Activating..." : "Activate"}
+                    </button>
+                  );
+
+                  return (
+                    <Fragment key={user.id}>
+                      <tr>
+                        <td>
+                          <div style={{ fontWeight: 500 }}>
+                            {user.name || (
+                              <span style={{ color: "var(--text3)" }}>—</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="mono">{user.phone}</td>
+                        <td style={{ color: "var(--text2)" }}>
+                          {getGoalLabel(user.fitness_goals)}
+                        </td>
+                        <td style={{ color: "var(--text2)" }}>
+                          {user.height_cm != null
+                            ? `${user.height_cm} cm`
+                            : "—"}
+                        </td>
+                        <td style={{ color: "var(--text2)" }}>
+                          {user.weight_kg != null
+                            ? `${user.weight_kg} kg`
+                            : "—"}
+                        </td>
+                        <td style={{ color: "var(--text3)", fontSize: 12 }}>
+                          {user.subscription_start
+                            ? new Date(
+                                user.subscription_start,
+                              ).toLocaleDateString("en-IN")
+                            : "—"}
+                        </td>
+                        <td>
+                          {user.trial_used === false ? (
+                            <span className="badge badge-pending">Trial</span>
+                          ) : (
+                            <span className="badge badge-verified">
+                              Returning
+                            </span>
+                          )}
+                        </td>
+
+                        {!submission ? (
+                          /* No onboarding submission — plain manual activation */
+                          <>
+                            <td style={{ minWidth: 280 }}>{urlInput}</td>
+                            <td>{activateButton}</td>
+                          </>
+                        ) : isProcessing ? (
+                          /* Review gate stays closed while processing is in flight */
+                          <>
+                            <td style={{ minWidth: 280 }}>
+                              <span className="badge badge-pending">
+                                <Clock size={11} /> Processing...
+                              </span>
+                            </td>
+                            <td style={{ color: "var(--text3)" }}>—</td>
+                          </>
+                        ) : status === "failed" ? (
+                          <>
+                            <td style={{ minWidth: 280 }}>
+                              {expanded ? (
+                                urlInput
+                              ) : (
+                                <span
+                                  style={{ color: "var(--red)", fontSize: 12 }}
+                                >
+                                  {submission.error_message ||
+                                    "Processing failed"}
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button
+                                  className="btn btn-ghost btn-sm"
+                                  disabled={retrying === submission.id}
+                                  onClick={() =>
+                                    handleRetryProcessing(submission)
+                                  }
+                                >
+                                  {retrying === submission.id
+                                    ? "Retrying..."
+                                    : "🔄 Retry Processing"}
+                                </button>
+                                {expanded ? (
+                                  activateButton
+                                ) : (
+                                  <button
+                                    className="btn btn-ghost btn-sm"
+                                    onClick={() => toggleExpanded(user.id)}
+                                  >
+                                    Activate manually (skip review)
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          /* processed — review before activating */
+                          <>
+                            <td style={{ minWidth: 280 }}>
+                              <span className="badge badge-verified">
+                                Ready for review
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => toggleExpanded(user.id)}
+                              >
+                                {expanded ? "Hide" : "Review →"}
+                              </button>
+                            </td>
+                          </>
                         )}
-                      </div>
-                    </td>
-                    <td className="mono">{user.phone}</td>
-                    <td style={{ color: "var(--text2)" }}>
-                      {getGoalLabel(user.fitness_goals)}
-                    </td>
-                    <td style={{ color: "var(--text2)" }}>
-                      {user.height_cm != null ? `${user.height_cm} cm` : "—"}
-                    </td>
-                    <td style={{ color: "var(--text2)" }}>
-                      {user.weight_kg != null ? `${user.weight_kg} kg` : "—"}
-                    </td>
-                    <td style={{ color: "var(--text3)", fontSize: 12 }}>
-                      {user.subscription_start
-                        ? new Date(user.subscription_start).toLocaleDateString(
-                            "en-IN",
-                          )
-                        : "—"}
-                    </td>
-                    <td>
-                      {user.trial_used === false ? (
-                        <span className="badge badge-pending">Trial</span>
-                      ) : (
-                        <span className="badge badge-verified">Returning</span>
+                      </tr>
+
+                      {submission && status === "processed" && expanded && (
+                        <tr>
+                          <td
+                            colSpan={9}
+                            style={{
+                              background: "var(--bg2)",
+                              padding: "16px 20px",
+                            }}
+                          >
+                            <div style={{ display: "grid", gap: 18 }}>
+                              <div>
+                                <div style={REVIEW_SECTION_LABEL}>
+                                  Raw Answers
+                                </div>
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "220px 1fr",
+                                    gap: "6px 16px",
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  {Object.entries(
+                                    submission.raw_answers || {},
+                                  ).map(([key, value]) => (
+                                    <Fragment key={key}>
+                                      <div style={{ color: "var(--text3)" }}>
+                                        {formatFieldLabel(key)}
+                                      </div>
+                                      <div style={{ color: "var(--text2)" }}>
+                                        {formatFieldValue(value)}
+                                      </div>
+                                    </Fragment>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {Object.keys(submission.transcripts || {})
+                                .length > 0 && (
+                                <div>
+                                  <div style={REVIEW_SECTION_LABEL}>
+                                    Transcripts
+                                  </div>
+                                  {Object.entries(submission.transcripts).map(
+                                    ([key, value]) => (
+                                      <div
+                                        key={key}
+                                        style={{ marginBottom: 8 }}
+                                      >
+                                        <div
+                                          style={{
+                                            color: "var(--text3)",
+                                            fontSize: 12,
+                                            marginBottom: 3,
+                                          }}
+                                        >
+                                          {formatFieldLabel(key)}
+                                        </div>
+                                        <div
+                                          style={{
+                                            color: "var(--text2)",
+                                            fontSize: 12,
+                                            fontStyle: "italic",
+                                            background: "var(--bg3)",
+                                            border: "1px solid var(--border)",
+                                            borderRadius: 6,
+                                            padding: "8px 10px",
+                                          }}
+                                        >
+                                          “{value || "—"}”
+                                        </div>
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+                              )}
+
+                              <div>
+                                <div style={REVIEW_SECTION_LABEL}>
+                                  Processed Data (Gemini output — edit if
+                                  needed)
+                                </div>
+                                <textarea
+                                  className="input"
+                                  style={{
+                                    width: "100%",
+                                    minHeight: 200,
+                                    fontFamily: "monospace",
+                                    fontSize: 12,
+                                    resize: "vertical",
+                                  }}
+                                  value={
+                                    editedJson[submission.id] ??
+                                    submissionJson(submission)
+                                  }
+                                  onChange={(e) =>
+                                    setEditedJson((prev) => ({
+                                      ...prev,
+                                      [submission.id]: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {jsonError[submission.id] && (
+                                  <div
+                                    style={{
+                                      color: "var(--red)",
+                                      fontSize: 12,
+                                      marginTop: 6,
+                                    }}
+                                  >
+                                    {jsonError[submission.id]}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: 10,
+                                  alignItems: "center",
+                                }}
+                              >
+                                <div style={{ flex: 1, maxWidth: 460 }}>
+                                  {urlInput}
+                                </div>
+                                <button
+                                  className="btn btn-success"
+                                  disabled={approving === submission.id}
+                                  onClick={() =>
+                                    handleApproveAndActivate(user, submission)
+                                  }
+                                >
+                                  {approving === submission.id
+                                    ? "Approving..."
+                                    : "✅ Approve & Activate"}
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td style={{ minWidth: 280 }}>
-                      <input
-                        className="input"
-                        style={{ fontSize: 12 }}
-                        placeholder="https://coach.example.com/dashboard/..."
-                        value={dashboardUrls[user.id] || ""}
-                        onChange={(e) =>
-                          setDashboardUrls((prev) => ({
-                            ...prev,
-                            [user.id]: e.target.value,
-                          }))
-                        }
-                      />
-                    </td>
-                    <td>
-                      <button
-                        className="btn btn-success btn-sm"
-                        disabled={activating === user.id}
-                        onClick={() => handleActivate(user)}
-                      >
-                        {activating === user.id ? "Activating..." : "Activate"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
