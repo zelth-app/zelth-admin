@@ -843,9 +843,10 @@ export function Coach() {
                                   className="input"
                                   style={{
                                     width: "100%",
-                                    minHeight: 200,
+                                    minHeight: 400,
                                     fontFamily: "monospace",
                                     fontSize: 12,
+                                    lineHeight: 1.5,
                                     resize: "vertical",
                                   }}
                                   value={
