@@ -308,7 +308,28 @@ export function Coach() {
         data: { coach_active: true, coach_dashboard_url: url },
         filters: { id: user.id },
       });
-      toast(`Coach activated for ${user.name || user.phone}`);
+
+      try {
+        const syncRes = await adminDb("sync_coach_sheet", {
+          user_id: user.id,
+          submission_id: submission.id,
+        });
+        if (syncRes.data?.reason === "not_configured") {
+          toast(
+            "Approved! (Sheet sync not yet configured — will sync once Google credentials are added)",
+          );
+        } else {
+          toast("Approved and synced to sheet!");
+        }
+      } catch (syncErr: any) {
+        // Activation already succeeded — a sheet sync failure should NOT undo that or block the UI.
+        toast(`Approved, but sheet sync failed: ${syncErr.message}`, "error");
+        console.error(
+          "[Coach.tsx] sheet sync failed after successful approval:",
+          syncErr,
+        );
+      }
+
       setEditedJson((prev) => {
         const n = { ...prev };
         delete n[submission.id];
