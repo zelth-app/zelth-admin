@@ -120,6 +120,7 @@ export function Coach() {
   const [dashboardUrls, setDashboardUrls] = useState<Record<string, string>>(
     {},
   );
+  const [dashboardBaseUrl, setDashboardBaseUrl] = useState<string>("");
   const [activating, setActivating] = useState<string | null>(null);
   const [editUrls, setEditUrls] = useState<Record<string, string>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -148,7 +149,39 @@ export function Coach() {
     loadPending();
     loadActive();
     loadSubmissions();
+    loadDashboardBaseUrl();
   }, []);
+
+  // Covers the first-mount race where coach_dashboard_base_url finishes
+  // loading after loadPending() already ran with an empty dashboardBaseUrl.
+  useEffect(() => {
+    if (!dashboardBaseUrl || pending.length === 0) return;
+    setDashboardUrls((prev) => {
+      const next = { ...prev };
+      for (const u of pending) {
+        if (!(u.id in next)) {
+          next[u.id] = `${dashboardBaseUrl}?user=${u.id}`;
+        }
+      }
+      return next;
+    });
+  }, [dashboardBaseUrl, pending]);
+
+  async function loadDashboardBaseUrl() {
+    try {
+      const { data } = await adminDb("select", {
+        table: "app_config",
+        columns: "value",
+        filters: { key: "coach_dashboard_base_url" },
+      });
+      const raw = data?.[0]?.value;
+      setDashboardBaseUrl(
+        typeof raw === "string" ? raw.replace(/^"|"$/g, "") : raw || "",
+      );
+    } catch (e: any) {
+      toast(e.message, "error");
+    }
+  }
 
   async function loadPending() {
     setLoadingPending(true);
@@ -162,6 +195,15 @@ export function Coach() {
         order: { column: "subscription_start", ascending: true },
       });
       setPending(data || []);
+      setDashboardUrls((prev) => {
+        const next = { ...prev };
+        for (const u of data || []) {
+          if (!(u.id in next) && dashboardBaseUrl) {
+            next[u.id] = `${dashboardBaseUrl}?user=${u.id}`;
+          }
+        }
+        return next;
+      });
     } catch (e: any) {
       toast(e.message, "error");
     } finally {
@@ -705,7 +747,7 @@ export function Coach() {
                         {!submission ? (
                           /* No onboarding submission — plain manual activation */
                           <>
-                            <td style={{ minWidth: 280 }}>{urlInput}</td>
+                            <td style={{ minWidth: 420 }}>{urlInput}</td>
                             <td>{activateButton}</td>
                           </>
                         ) : isProcessing ? (
@@ -720,7 +762,7 @@ export function Coach() {
                           </>
                         ) : status === "failed" ? (
                           <>
-                            <td style={{ minWidth: 280 }}>
+                            <td style={{ minWidth: 420 }}>
                               {expanded ? (
                                 urlInput
                               ) : (
@@ -901,9 +943,7 @@ export function Coach() {
                                   alignItems: "center",
                                 }}
                               >
-                                <div style={{ flex: 1, maxWidth: 460 }}>
-                                  {urlInput}
-                                </div>
+                                <div style={{ flex: 1 }}>{urlInput}</div>
                                 <button
                                   className="btn btn-success"
                                   disabled={approving === submission.id}
