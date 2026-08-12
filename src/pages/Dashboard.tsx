@@ -36,7 +36,7 @@ export function Dashboard() {
     try {
       const [usersRes, { count: challenges }, { data: walletData }] =
         await Promise.all([
-          adminDb("select", { table: "users", columns: "id" }),
+          adminDb("count", { table: "users" }),
           supabase
             .from("challenges")
             .select("*", { count: "exact", head: true })
@@ -44,33 +44,29 @@ export function Dashboard() {
           supabase.from("wallet").select("balance, total_earned"),
         ]);
 
-      const activeSubsRes = await adminDb("select", {
+      const activeSubsRes = await adminDb("count", {
         table: "users",
-        columns: "id",
         gte: { subscription_end: new Date().toISOString() },
       });
-      const active_subscribers = activeSubsRes.data?.length || 0;
+      const active_subscribers = activeSubsRes.count || 0;
 
-      const pendingCoachRes = await adminDb("select", {
+      const pendingCoachRes = await adminDb("count", {
         table: "users",
-        columns: "id",
         gte: { subscription_end: new Date().toISOString() },
         filters: { coach_active: false },
       });
-      const pending_coach = pendingCoachRes.data?.length || 0;
+      const pending_coach = pendingCoachRes.count || 0;
 
-      const submissionsRes = await adminDb("select", {
+      const submissionsRes = await adminDb("count", {
         table: "activity_submissions",
-        columns: "id",
       });
-      const submissions = submissionsRes.data?.length || 0;
+      const submissions = submissionsRes.count || 0;
 
-      const pendingSubsRes = await adminDb("select", {
+      const pendingSubsRes = await adminDb("count", {
         table: "activity_submissions",
-        columns: "id",
         filters: { status: "submitted" },
       });
-      const pending_submissions = pendingSubsRes.data?.length || 0;
+      const pending_submissions = pendingSubsRes.count || 0;
 
       const recentSubsRes = await adminDb("select", {
         table: "activity_submissions",
@@ -81,12 +77,11 @@ export function Dashboard() {
       });
       const recentSubsData = recentSubsRes.data;
 
-      const withdrawalsRes = await adminDb("select", {
+      const withdrawalsRes = await adminDb("count", {
         table: "withdrawal_requests",
-        columns: "id",
         filters: { status: "pending" },
       });
-      const withdrawals = withdrawalsRes.data?.length || 0;
+      const withdrawals = withdrawalsRes.count || 0;
 
       const totalWallet = (walletData || []).reduce(
         (sum: number, w: any) => sum + Number(w.balance),
@@ -126,7 +121,7 @@ export function Dashboard() {
       }
 
       setStats({
-        users: usersRes.data?.length || 0,
+        users: usersRes.count || 0,
         challenges: challenges || 0,
         submissions: submissions || 0,
         pending_submissions: pending_submissions || 0,
