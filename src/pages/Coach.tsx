@@ -747,7 +747,7 @@ export function Coach() {
                         {!submission ? (
                           /* No onboarding submission — plain manual activation */
                           <>
-                            <td style={{ minWidth: 420 }}>{urlInput}</td>
+                            <td style={{ minWidth: 280 }}>{urlInput}</td>
                             <td>{activateButton}</td>
                           </>
                         ) : isProcessing ? (
@@ -762,7 +762,7 @@ export function Coach() {
                           </>
                         ) : status === "failed" ? (
                           <>
-                            <td style={{ minWidth: 420 }}>
+                            <td style={{ minWidth: 280 }}>
                               {expanded ? (
                                 urlInput
                               ) : (
