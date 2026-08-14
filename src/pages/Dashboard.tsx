@@ -53,7 +53,9 @@ export function Dashboard() {
       const pendingCoachRes = await adminDb("count", {
         table: "users",
         gte: { subscription_end: new Date().toISOString() },
-        filters: { coach_active: false },
+        // Must match Coach.tsx's Pending Setup query — deliberately deactivated
+        // users are not awaiting setup.
+        filters: { coach_active: false, coach_deactivated: false },
       });
       const pending_coach = pendingCoachRes.count || 0;
 

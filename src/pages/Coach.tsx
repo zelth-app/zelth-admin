@@ -130,6 +130,12 @@ export function Coach() {
   );
   const [activeCollapsed, setActiveCollapsed] = useState(false);
 
+  // Deactivated (switched off deliberately — not awaiting setup)
+  const [deactivated, setDeactivated] = useState<ActiveCoachUser[]>([]);
+  const [loadingDeactivated, setLoadingDeactivated] = useState(true);
+  const [deactivatedCollapsed, setDeactivatedCollapsed] = useState(true);
+  const [movingToPending, setMovingToPending] = useState<string | null>(null);
+
   // Onboarding review state
   const [submissions, setSubmissions] = useState<OnboardingSubmission[]>([]);
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
@@ -148,6 +154,7 @@ export function Coach() {
   useEffect(() => {
     loadPending();
     loadActive();
+    loadDeactivated();
     loadSubmissions();
     loadDashboardBaseUrl();
   }, []);
@@ -191,7 +198,9 @@ export function Coach() {
         columns:
           "id, name, phone, fitness_goals, height_cm, weight_kg, subscription_start, subscription_end, trial_used",
         gte: { subscription_end: new Date().toISOString() },
-        filters: { coach_active: false },
+        // coach_deactivated excludes users switched off on purpose — without it
+        // every deactivation lands straight back in this queue.
+        filters: { coach_active: false, coach_deactivated: false },
         order: { column: "subscription_start", ascending: true },
       });
       setPending(data || []);
@@ -229,6 +238,28 @@ export function Coach() {
     }
   }
 
+  // Only live subscriptions — a deactivated user whose subscription has lapsed
+  // can't be moved back to Pending anyway, so listing them here would just be
+  // a growing pile of rows with no available action.
+  async function loadDeactivated() {
+    setLoadingDeactivated(true);
+    try {
+      const { data } = await adminDb("select", {
+        table: "users",
+        columns:
+          "id, name, phone, fitness_goals, coach_dashboard_url, subscription_end",
+        gte: { subscription_end: new Date().toISOString() },
+        filters: { coach_active: false, coach_deactivated: true },
+        order: { column: "subscription_end", ascending: false },
+      });
+      setDeactivated(data || []);
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setLoadingDeactivated(false);
+    }
+  }
+
   // A user can have more than one submission row (a resubmission after an
   // earlier approval), so order newest-first — submissionForUser takes the
   // first match and must land on the current one, not an arbitrary old row.
@@ -249,6 +280,7 @@ export function Coach() {
   function refresh() {
     loadPending();
     loadActive();
+    loadDeactivated();
     loadSubmissions();
   }
 
@@ -280,7 +312,11 @@ export function Coach() {
     try {
       await adminDb("update", {
         table: "users",
-        data: { coach_active: true, coach_dashboard_url: url },
+        data: {
+          coach_active: true,
+          coach_dashboard_url: url,
+          coach_deactivated: false,
+        },
         filters: { id: user.id },
       });
       toast(`Coach activated for ${user.name || user.phone}`);
@@ -349,7 +385,11 @@ export function Coach() {
       });
       await adminDb("update", {
         table: "users",
-        data: { coach_active: true, coach_dashboard_url: url },
+        data: {
+          coach_active: true,
+          coach_dashboard_url: url,
+          coach_deactivated: false,
+        },
         filters: { id: user.id },
       });
 
@@ -444,7 +484,9 @@ export function Coach() {
     try {
       await adminDb("update", {
         table: "users",
-        data: { coach_active: false },
+        // coach_deactivated is what keeps them out of Pending Setup; without it
+        // coach_active: false alone reads as "awaiting setup".
+        data: { coach_active: false, coach_deactivated: true },
         filters: { id: userId },
       });
       toast("Coach access deactivated");
@@ -454,6 +496,26 @@ export function Coach() {
       toast(e.message, "error");
     } finally {
       setSaving(null);
+    }
+  }
+
+  // Re-setup: back into the Pending queue for a fresh dashboard URL. The stored
+  // coach_dashboard_url is deliberately left in place as a reference — the
+  // pending row's input starts empty and overwrites it on activation.
+  async function handleMoveToPending(user: ActiveCoachUser) {
+    setMovingToPending(user.id);
+    try {
+      await adminDb("update", {
+        table: "users",
+        data: { coach_active: false, coach_deactivated: false },
+        filters: { id: user.id },
+      });
+      toast(`${user.name || user.phone} moved to Pending Setup`);
+      refresh();
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setMovingToPending(null);
     }
   }
 
@@ -563,7 +625,11 @@ export function Coach() {
         try {
           await adminDb("update", {
             table: "users",
-            data: { coach_active: true, coach_dashboard_url: url },
+            data: {
+              coach_active: true,
+              coach_dashboard_url: url,
+              coach_deactivated: false,
+            },
             filters: { id: row.user_id },
           });
           res[i] = { row, status: "success", message: "✓ Coach activated" };
@@ -1465,12 +1531,126 @@ export function Coach() {
                             </button>
                           )}
                           <button
+                            className="btn btn-ghost btn-sm"
+                            disabled={movingToPending === user.id}
+                            onClick={() => handleMoveToPending(user)}
+                            title="Send back for re-setup with a new dashboard URL"
+                          >
+                            {movingToPending === user.id
+                              ? "Moving..."
+                              : "Move to Pending"}
+                          </button>
+                          <button
                             className="btn btn-danger btn-sm"
                             onClick={() => setDeactivateConfirm(user.id)}
                           >
                             Deactivate
                           </button>
                         </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Section 3: Deactivated ──────────────────────────────────────── */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 8,
+          marginTop: 28,
+        }}
+      >
+        <button
+          className="btn btn-ghost btn-sm"
+          style={{ padding: "3px 7px" }}
+          onClick={() => setDeactivatedCollapsed((c) => !c)}
+        >
+          {deactivatedCollapsed ? (
+            <ChevronDown size={14} />
+          ) : (
+            <ChevronUp size={14} />
+          )}
+        </button>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>Deactivated</div>
+        <span className="badge badge-rejected">{deactivated.length}</span>
+        <span style={{ color: "var(--text3)", fontSize: 12 }}>
+          Switched off deliberately — excluded from Pending Setup
+        </span>
+      </div>
+
+      {!deactivatedCollapsed && (
+        <div className="card" style={{ padding: 0 }}>
+          {loadingDeactivated ? (
+            <div className="loading">Loading...</div>
+          ) : deactivated.length === 0 ? (
+            <div className="empty">
+              <div className="empty-icon">🚫</div>
+              <div className="empty-text">No deactivated coach users</div>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>Goal</th>
+                    <th>Last Dashboard URL</th>
+                    <th>Subscription Ends</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deactivated.map((user) => (
+                    <tr key={user.id}>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>
+                          {user.name || (
+                            <span style={{ color: "var(--text3)" }}>—</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="mono">{user.phone}</td>
+                      <td style={{ color: "var(--text2)" }}>
+                        {getGoalLabel(user.fitness_goals)}
+                      </td>
+                      <td
+                        style={{
+                          color: "var(--text3)",
+                          fontSize: 12,
+                          maxWidth: 240,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={user.coach_dashboard_url || ""}
+                      >
+                        {user.coach_dashboard_url || "—"}
+                      </td>
+                      <td style={{ color: "var(--text3)", fontSize: 12 }}>
+                        {user.subscription_end
+                          ? new Date(user.subscription_end).toLocaleDateString(
+                              "en-IN",
+                            )
+                          : "—"}
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          disabled={movingToPending === user.id}
+                          onClick={() => handleMoveToPending(user)}
+                        >
+                          {movingToPending === user.id
+                            ? "Moving..."
+                            : "Move to Pending"}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1491,7 +1671,10 @@ export function Coach() {
             <p
               style={{ color: "var(--text2)", fontSize: 13, marginBottom: 20 }}
             >
-              Are you sure? This user will lose access to their coach dashboard.
+              Are you sure? This user will lose access to their coach dashboard
+              and move to the Deactivated section — they will not reappear in
+              Pending Setup. Use “Move to Pending” instead if you want them
+              re-set-up with a new dashboard URL.
             </p>
             <div style={{ display: "flex", gap: 10 }}>
               <button
