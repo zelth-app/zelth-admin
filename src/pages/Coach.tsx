@@ -229,14 +229,16 @@ export function Coach() {
     }
   }
 
-  // No filter needed — approved submissions belong to users who are no longer
-  // pending, so they never match a row in this table.
+  // A user can have more than one submission row (a resubmission after an
+  // earlier approval), so order newest-first — submissionForUser takes the
+  // first match and must land on the current one, not an arbitrary old row.
   async function loadSubmissions() {
     try {
       const { data } = await adminDb("select", {
         table: "coach_onboarding_submissions",
         columns:
           "id, user_id, raw_answers, audio_urls, transcripts, processed_data, admin_edited_data, status, error_message",
+        order: { column: "updated_at", ascending: false },
       });
       setSubmissions(data || []);
     } catch (e: any) {
@@ -676,6 +678,12 @@ export function Coach() {
                     status === "transcribing" ||
                     status === "transcribed" ||
                     status === "processing";
+                  // "approved" is reviewable too: the user is still pending, so
+                  // the submission was approved but activation never landed —
+                  // the panel is how that gets finished. Must stay in sync with
+                  // the panel's own condition or the Review button does nothing.
+                  const isReviewable =
+                    status === "processed" || status === "approved";
                   const expanded = !!expandedIds[user.id];
 
                   const urlInput = (
@@ -800,13 +808,19 @@ export function Coach() {
                               </div>
                             </td>
                           </>
-                        ) : (
-                          /* processed — review before activating */
+                        ) : isReviewable ? (
+                          /* processed / approved — review before activating */
                           <>
                             <td style={{ minWidth: 280 }}>
-                              <span className="badge badge-verified">
-                                Ready for review
-                              </span>
+                              {status === "approved" ? (
+                                <span className="badge badge-submitted">
+                                  Approved — not activated
+                                </span>
+                              ) : (
+                                <span className="badge badge-verified">
+                                  Ready for review
+                                </span>
+                              )}
                             </td>
                             <td>
                               <button
@@ -817,10 +831,17 @@ export function Coach() {
                               </button>
                             </td>
                           </>
+                        ) : (
+                          /* Unknown status — never leave the row with no way
+                             forward; fall back to plain manual activation. */
+                          <>
+                            <td style={{ minWidth: 280 }}>{urlInput}</td>
+                            <td>{activateButton}</td>
+                          </>
                         )}
                       </tr>
 
-                      {submission && status === "processed" && expanded && (
+                      {submission && isReviewable && expanded && (
                         <tr>
                           <td
                             colSpan={9}
