@@ -380,6 +380,7 @@ export function Coach() {
           // approved_by stays null — it's a uuid FK to users(id) and this panel
           // has no per-admin identity to attribute the approval to.
           approved_at: new Date().toISOString(),
+          approved_via: "manual",
         },
         filters: { id: submission.id },
       });
