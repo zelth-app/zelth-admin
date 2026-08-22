@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { adminDb } from "../lib/supabase";
 import { toast } from "../components/Toast";
-import { RefreshCw, Search, Download } from "lucide-react";
+import {
+  RefreshCw,
+  Search,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { exportCsv } from "../lib/exportCsv";
 
 interface User {
@@ -26,6 +32,13 @@ interface User {
   weight_kg: number | null;
 }
 
+interface Stats {
+  totalUsers: number;
+  premiumCount: number;
+  totalWallet: number;
+  totalEarned: number;
+}
+
 const GOAL_LABELS: Record<string, string> = {
   lose_weight: "Lose Weight",
   build_muscle: "Build Muscle",
@@ -34,73 +47,139 @@ const GOAL_LABELS: Record<string, string> = {
   lose_weight_build_muscle: "Lose Weight + Build Muscle",
 };
 
+const PAGE_SIZE = 50;
+const USER_COLUMNS =
+  "id, phone, name, age, city, gender, language, upi_id, created_at, subscription_end, trial_used, coach_active, fitness_goals, height_cm, weight_kg, wallet(balance, total_earned, total_withdrawn)";
+
 const isSubscribed = (u: User) =>
   !!u.subscription_end && new Date(u.subscription_end).getTime() > Date.now();
+
+function mapUser(u: any, joinMap: Record<string, number>): User {
+  return {
+    id: u.id,
+    phone: u.phone,
+    name: u.name,
+    age: u.age,
+    city: u.city,
+    gender: u.gender,
+    language: u.language,
+    upi_id: u.upi_id,
+    created_at: u.created_at,
+    wallet_balance: Number(u.wallet?.[0]?.balance || 0),
+    total_earned: Number(u.wallet?.[0]?.total_earned || 0),
+    total_withdrawn: Number(u.wallet?.[0]?.total_withdrawn || 0),
+    join_count: joinMap[u.id] || 0,
+    subscription_end: u.subscription_end ?? null,
+    trial_used: !!u.trial_used,
+    coach_active: !!u.coach_active,
+    fitness_goals: u.fitness_goals ?? null,
+    height_cm: u.height_cm ?? null,
+    weight_kg: u.weight_kg ?? null,
+  };
+}
+
+async function fetchJoinCounts(
+  userIds: string[],
+): Promise<Record<string, number>> {
+  const joinMap: Record<string, number> = {};
+  const chunks: string[][] = [];
+  for (let i = 0; i < userIds.length; i += 50) {
+    chunks.push(userIds.slice(i, i + 50));
+  }
+  const joinResults = await Promise.all(
+    chunks.map((chunk) =>
+      adminDb("select", {
+        table: "challenge_participants",
+        columns: "user_id",
+        in: { column: "user_id", values: chunk },
+      }),
+    ),
+  );
+  for (const { data: joinData } of joinResults) {
+    for (const j of joinData || []) {
+      joinMap[j.user_id] = (joinMap[j.user_id] || 0) + 1;
+    }
+  }
+  return joinMap;
+}
 
 export function Users() {
   const [rows, setRows] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [search, setSearch] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [stats, setStats] = useState<Stats | null>(null);
 
   useEffect(() => {
-    load();
+    loadStats();
   }, []);
 
-  async function load() {
+  // Debounce free-text search, resetting to page 0 on each new term.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setPage(0);
+      setSearchTerm(search.trim());
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    loadPage(page, searchTerm);
+  }, [page, searchTerm]);
+
+  async function loadStats() {
+    try {
+      const [
+        { count: totalUsers },
+        { count: premiumCount },
+        { data: walletTotals },
+      ] = await Promise.all([
+        adminDb("count", { table: "users" }),
+        adminDb("count", {
+          table: "users",
+          gte: { subscription_end: new Date().toISOString() },
+        }),
+        adminDb("sum", {
+          table: "wallet",
+          columns: ["balance", "total_earned"],
+        }),
+      ]);
+      setStats({
+        totalUsers: totalUsers || 0,
+        premiumCount: premiumCount || 0,
+        totalWallet: walletTotals?.balance || 0,
+        totalEarned: walletTotals?.total_earned || 0,
+      });
+    } catch (e: any) {
+      toast(e.message, "error");
+    }
+  }
+
+  async function loadPage(pageIndex: number, term: string) {
     setLoading(true);
     try {
-      const { data } = await adminDb("select", {
-        table: "users",
-        columns:
-          "id, phone, name, age, city, gender, language, upi_id, created_at, subscription_end, trial_used, coach_active, fitness_goals, height_cm, weight_kg, wallet(balance, total_earned, total_withdrawn)",
-        order: { column: "created_at", ascending: false },
-      });
+      const searchParams = term
+        ? { orLike: { columns: ["name", "phone", "city"], value: term } }
+        : {};
 
-      const userIds = (data || []).map((u: any) => u.id);
-      const chunks: string[][] = [];
-      for (let i = 0; i < userIds.length; i += 50) {
-        chunks.push(userIds.slice(i, i + 50));
-      }
-      const joinResults = await Promise.all(
-        chunks.map((chunk) =>
-          adminDb("select", {
-            table: "challenge_participants",
-            columns: "user_id",
-            in: { column: "user_id", values: chunk },
-          }),
-        ),
-      );
+      const [{ data }, { count }] = await Promise.all([
+        adminDb("select", {
+          table: "users",
+          columns: USER_COLUMNS,
+          order: { column: "created_at", ascending: false },
+          limit: PAGE_SIZE,
+          offset: pageIndex * PAGE_SIZE,
+          ...searchParams,
+        }),
+        adminDb("count", { table: "users", ...searchParams }),
+      ]);
 
-      const joinMap: Record<string, number> = {};
-      for (const { data: joinData } of joinResults) {
-        for (const j of joinData || []) {
-          joinMap[j.user_id] = (joinMap[j.user_id] || 0) + 1;
-        }
-      }
-
-      setRows(
-        (data || []).map((u: any) => ({
-          id: u.id,
-          phone: u.phone,
-          name: u.name,
-          age: u.age,
-          city: u.city,
-          gender: u.gender,
-          language: u.language,
-          upi_id: u.upi_id,
-          created_at: u.created_at,
-          wallet_balance: Number(u.wallet?.[0]?.balance || 0),
-          total_earned: Number(u.wallet?.[0]?.total_earned || 0),
-          total_withdrawn: Number(u.wallet?.[0]?.total_withdrawn || 0),
-          join_count: joinMap[u.id] || 0,
-          subscription_end: u.subscription_end ?? null,
-          trial_used: !!u.trial_used,
-          coach_active: !!u.coach_active,
-          fitness_goals: u.fitness_goals ?? null,
-          height_cm: u.height_cm ?? null,
-          weight_kg: u.weight_kg ?? null,
-        })),
-      );
+      setTotalCount(count || 0);
+      const joinMap = await fetchJoinCounts((data || []).map((u: any) => u.id));
+      setRows((data || []).map((u: any) => mapUser(u, joinMap)));
     } catch (e: any) {
       toast(e.message, "error");
     } finally {
@@ -108,18 +187,71 @@ export function Users() {
     }
   }
 
-  const filtered = rows.filter(
-    (r) =>
-      !search ||
-      r.phone.includes(search) ||
-      (r.name || "").toLowerCase().includes(search.toLowerCase()) ||
-      (r.city || "").toLowerCase().includes(search.toLowerCase()),
-  );
+  function refresh() {
+    loadStats();
+    loadPage(page, searchTerm);
+  }
 
-  const totalUsers = rows.length;
-  const totalWallet = rows.reduce((s, r) => s + r.wallet_balance, 0);
-  const totalEarned = rows.reduce((s, r) => s + r.total_earned, 0);
-  const premiumCount = rows.filter(isSubscribed).length;
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const searchParams = searchTerm
+        ? { orLike: { columns: ["name", "phone", "city"], value: searchTerm } }
+        : {};
+
+      const all: any[] = [];
+      let offset = 0;
+      const chunkSize = 1000;
+      while (true) {
+        const { data } = await adminDb("select", {
+          table: "users",
+          columns: USER_COLUMNS,
+          order: { column: "created_at", ascending: false },
+          limit: chunkSize,
+          offset,
+          ...searchParams,
+        });
+        all.push(...(data || []));
+        if (!data || data.length < chunkSize) break;
+        offset += chunkSize;
+      }
+
+      const joinMap = await fetchJoinCounts(all.map((u) => u.id));
+      const mapped = all.map((u) => mapUser(u, joinMap));
+
+      exportCsv(
+        mapped.map((u) => ({
+          id: u.id,
+          name: u.name,
+          phone: u.phone,
+          age: u.age,
+          city: u.city,
+          gender: u.gender,
+          language: u.language,
+          upi_id: u.upi_id,
+          wallet_balance: u.wallet_balance,
+          total_earned: u.total_earned,
+          total_withdrawn: u.total_withdrawn,
+          challenge_count: u.join_count,
+          created_at: u.created_at,
+          is_subscribed: isSubscribed(u),
+          subscription_end: u.subscription_end,
+          trial_used: u.trial_used,
+          coach_active: u.coach_active,
+          fitness_goals: u.fitness_goals?.join(";") ?? "",
+          height_cm: u.height_cm,
+          weight_kg: u.weight_kg,
+        })),
+        "zelth_users",
+      );
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   return (
     <div style={{ padding: 24 }}>
@@ -131,40 +263,15 @@ export function Users() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={load}>
+          <button className="btn btn-ghost btn-sm" onClick={refresh}>
             <RefreshCw size={13} /> Refresh
           </button>
           <button
             className="btn btn-ghost btn-sm"
-            onClick={() =>
-              exportCsv(
-                filtered.map((u) => ({
-                  id: u.id,
-                  name: u.name,
-                  phone: u.phone,
-                  age: u.age,
-                  city: u.city,
-                  gender: u.gender,
-                  language: u.language,
-                  upi_id: u.upi_id,
-                  wallet_balance: u.wallet_balance,
-                  total_earned: u.total_earned,
-                  total_withdrawn: u.total_withdrawn,
-                  challenge_count: u.join_count,
-                  created_at: u.created_at,
-                  is_subscribed: isSubscribed(u),
-                  subscription_end: u.subscription_end,
-                  trial_used: u.trial_used,
-                  coach_active: u.coach_active,
-                  fitness_goals: u.fitness_goals?.join(";") ?? "",
-                  height_cm: u.height_cm,
-                  weight_kg: u.weight_kg,
-                })),
-                "zelth_users",
-              )
-            }
+            onClick={handleExport}
+            disabled={exporting}
           >
-            <Download size={13} /> Export CSV
+            <Download size={13} /> {exporting ? "Exporting..." : "Export CSV"}
           </button>
         </div>
       </div>
@@ -176,13 +283,13 @@ export function Users() {
         <div className="stat-card">
           <div className="stat-label">Total Users</div>
           <div className="stat-value" style={{ color: "var(--blue)" }}>
-            {totalUsers}
+            {stats?.totalUsers ?? "..."}
           </div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Premium Subscribers</div>
           <div className="stat-value" style={{ color: "var(--orange)" }}>
-            {premiumCount}
+            {stats?.premiumCount ?? "..."}
           </div>
         </div>
         <div className="stat-card">
@@ -191,7 +298,7 @@ export function Users() {
             className="stat-value"
             style={{ color: "var(--orange)", fontSize: 20 }}
           >
-            ₹{totalWallet.toLocaleString("en-IN")}
+            ₹{(stats?.totalWallet ?? 0).toLocaleString("en-IN")}
           </div>
         </div>
         <div className="stat-card">
@@ -200,7 +307,7 @@ export function Users() {
             className="stat-value"
             style={{ color: "var(--green)", fontSize: 20 }}
           >
-            ₹{totalEarned.toLocaleString("en-IN")}
+            ₹{(stats?.totalEarned ?? 0).toLocaleString("en-IN")}
           </div>
         </div>
       </div>
@@ -226,14 +333,14 @@ export function Users() {
           />
         </div>
         <div style={{ color: "var(--text3)", fontSize: 12 }}>
-          {filtered.length} users
+          {totalCount} users
         </div>
       </div>
 
       <div className="card" style={{ padding: 0 }}>
         {loading ? (
           <div className="loading">Loading users...</div>
-        ) : filtered.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="empty">
             <div className="empty-icon">👥</div>
             <div className="empty-text">No users found</div>
@@ -257,7 +364,7 @@ export function Users() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((u) => (
+                {rows.map((u) => (
                   <tr key={u.id}>
                     <td>
                       <div style={{ fontWeight: 500 }}>
@@ -351,6 +458,36 @@ export function Users() {
           </div>
         )}
       </div>
+
+      {!loading && rows.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            gap: 12,
+            marginTop: 12,
+          }}
+        >
+          <span style={{ color: "var(--text3)", fontSize: 12 }}>
+            Page {page + 1} of {totalPages}
+          </span>
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={page === 0}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+          >
+            <ChevronLeft size={13} />
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={page + 1 >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            <ChevronRight size={13} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
