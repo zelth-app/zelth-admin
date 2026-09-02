@@ -128,6 +128,7 @@ export function Coach() {
   const [deactivateConfirm, setDeactivateConfirm] = useState<string | null>(
     null,
   );
+  const [refundTransactionId, setRefundTransactionId] = useState("");
   const [activeCollapsed, setActiveCollapsed] = useState(false);
 
   // Deactivated (switched off deliberately — not awaiting setup)
@@ -483,15 +484,20 @@ export function Coach() {
   async function handleDeactivate(userId: string) {
     setSaving(userId);
     try {
-      await adminDb("update", {
-        table: "users",
-        // coach_deactivated is what keeps them out of Pending Setup; without it
-        // coach_active: false alone reads as "awaiting setup".
-        data: { coach_active: false, coach_deactivated: true },
-        filters: { id: userId },
+      // Single backend operation so the refund mark and the deactivation can't
+      // half-apply. coach_deactivated is what keeps them out of Pending Setup;
+      // coach_active: false alone reads as "awaiting setup".
+      const result = await adminDb("deactivate_and_refund", {
+        user_id: userId,
+        transaction_id: refundTransactionId.trim() || undefined,
       });
-      toast("Coach access deactivated");
+      toast(
+        result.data?.refunded
+          ? "Coach access deactivated and order marked refunded"
+          : "Coach access deactivated",
+      );
       setDeactivateConfirm(null);
+      setRefundTransactionId("");
       refresh();
     } catch (e: any) {
       toast(e.message, "error");
@@ -1543,7 +1549,10 @@ export function Coach() {
                           </button>
                           <button
                             className="btn btn-danger btn-sm"
-                            onClick={() => setDeactivateConfirm(user.id)}
+                            onClick={() => {
+                              setDeactivateConfirm(user.id);
+                              setRefundTransactionId("");
+                            }}
                           >
                             Deactivate
                           </button>
@@ -1665,7 +1674,10 @@ export function Coach() {
       {deactivateConfirm && (
         <div
           className="modal-overlay"
-          onClick={() => setDeactivateConfirm(null)}
+          onClick={() => {
+            setDeactivateConfirm(null);
+            setRefundTransactionId("");
+          }}
         >
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">Deactivate Coach Access</div>
@@ -1677,11 +1689,35 @@ export function Coach() {
               Pending Setup. Use “Move to Pending” instead if you want them
               re-set-up with a new dashboard URL.
             </p>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div>
+              <label className="label">Refund Transaction ID</label>
+              <input
+                className="input"
+                placeholder="UPI / bank transfer reference (optional)"
+                value={refundTransactionId}
+                onChange={(e) => setRefundTransactionId(e.target.value)}
+                autoFocus
+              />
+              <div
+                style={{
+                  fontSize: 9,
+                  color: "rgba(255,255,255,0.4)",
+                  marginTop: 4,
+                }}
+              >
+                If the user needs a refund and you've already sent it, enter the
+                reference here to mark their subscription order as refunded.
+                Leave blank to just deactivate with no refund record.
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <button
                 className="btn btn-ghost"
                 style={{ flex: 1 }}
-                onClick={() => setDeactivateConfirm(null)}
+                onClick={() => {
+                  setDeactivateConfirm(null);
+                  setRefundTransactionId("");
+                }}
               >
                 Cancel
               </button>
